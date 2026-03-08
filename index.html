@@ -1053,7 +1053,7 @@ const DB = {
 
   // Hash por defecto = SHA-256 de 'admin1234'
   getAdminPwHash() {
-    return localStorage.getItem('cp_admin_pw_hash') || '937e8d5fbb48bd4949536cd65b8d35c426b80d2f830c5c308e2cdec422ae2244';
+    return localStorage.getItem('cp_admin_pw_hash') || 'ac9689e2272427085e35b9d3e3e8bed88cb3434828b43b86fc0596cad4c6e270';
   },
   async setAdminPw(newPw) {
     const hash = await sha256(newPw);
@@ -1638,7 +1638,6 @@ async function renderAdmin() {
   });
 
   // Table
-  const tableEl = document.getElementById('users-table');
   if (filtered.length === 0) {
     tableEl.innerHTML = '<div class="empty-state"><div class="e-icon">🔍</div><p>No hay resultados</p></div>';
   } else {
@@ -1684,7 +1683,6 @@ async function renderAdmin() {
   }
 
   // Activity log
-  const logEl = document.getElementById('activity-log');
   if (logs.length === 0) {
     logEl.innerHTML = '<div class="empty-state"><div class="e-icon">📋</div><p>Sin actividad aún</p></div>';
   } else {
