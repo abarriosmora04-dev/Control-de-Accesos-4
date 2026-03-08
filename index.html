@@ -668,13 +668,13 @@
     <div class="zona-selector" id="zona-selector">
       <div class="zona-title">¿A qué zona perteneces?</div>
       <div class="zona-btns">
-        <button class="zona-btn" id="zona-poli" onclick="setZona('Polideportivo')">
-          <span class="zona-icon">🏟</span>
-          <span class="zona-name">Polideportivo</span>
+        <button class="zona-btn" id="zona-poli" onclick="setZona('Parking Turismos')">
+          <span class="zona-icon">🚗</span>
+          <span class="zona-name">Parking Turismos</span>
         </button>
-        <button class="zona-btn" id="zona-feria" onclick="setZona('Vecinos Av. de la Feria')">
-          <span class="zona-icon">🏘</span>
-          <span class="zona-name">Vecinos Av. de la Feria</span>
+        <button class="zona-btn" id="zona-feria" onclick="setZona('Parking Autocaravanas')">
+          <span class="zona-icon">🚐</span>
+          <span class="zona-name">Parking Autocaravanas</span>
         </button>
       </div>
     </div>
@@ -775,13 +775,13 @@
     <div class="zona-selector" style="margin-bottom:12px">
       <div class="zona-title">Zona de escaneo</div>
       <div class="zona-btns">
-        <button class="zona-btn" id="scan-zona-poli" onclick="setScanZona('Polideportivo')">
-          <span class="zona-icon">🏟</span>
-          <span class="zona-name">Polideportivo</span>
+        <button class="zona-btn" id="scan-zona-poli" onclick="setScanZona('Parking Turismos')">
+          <span class="zona-icon">🚗</span>
+          <span class="zona-name">Parking Turismos</span>
         </button>
-        <button class="zona-btn" id="scan-zona-feria" onclick="setScanZona('Vecinos Av. de la Feria')">
-          <span class="zona-icon">🏘</span>
-          <span class="zona-name">Vecinos Av. de la Feria</span>
+        <button class="zona-btn" id="scan-zona-feria" onclick="setScanZona('Parking Autocaravanas')">
+          <span class="zona-icon">🚐</span>
+          <span class="zona-name">Parking Autocaravanas</span>
         </button>
       </div>
     </div>
@@ -869,8 +869,8 @@
       <input class="filter-input" id="filter-search" placeholder="Buscar por nombre, matrícula, DNI..." oninput="renderAdmin()">
       <select class="filter-select" id="filter-zona" onchange="renderAdmin()">
         <option value="all">Todas las zonas</option>
-        <option value="Polideportivo">Polideportivo</option>
-        <option value="Vecinos Av. de la Feria">Av. de la Feria</option>
+        <option value="Parking Turismos">Parking Turismos</option>
+        <option value="Parking Autocaravanas">Av. de la Feria</option>
       </select>
       <select class="filter-select" id="filter-status" onchange="renderAdmin()">
         <option value="all">Todos</option>
@@ -1016,7 +1016,12 @@ const DB = {
   async getLogs() {
     if (_logsCache && (Date.now() - _logsCacheTs < CONFIG.CACHE_TTL_MS)) return _logsCache;
     const data = await apiCall({ action: 'getLogs' });
-    _logsCache = Array.isArray(data) ? data : [];
+    if (data && data.error) {
+      console.warn('getLogs failed, returning empty array:', data.error);
+      _logsCache = [];
+    } else {
+      _logsCache = Array.isArray(data) ? data : [];
+    }
     _logsCacheTs = Date.now();
     return _logsCache;
   },
@@ -1091,8 +1096,8 @@ const AppState = {
 
 function setZona(zona) {
   AppState.selectedZona = zona;
-  document.getElementById('zona-poli').classList.toggle('active', zona === 'Polideportivo');
-  document.getElementById('zona-feria').classList.toggle('active', zona === 'Vecinos Av. de la Feria');
+  document.getElementById('zona-poli').classList.toggle('active', zona === 'Parking Turismos');
+  document.getElementById('zona-feria').classList.toggle('active', zona === 'Parking Autocaravanas');
   const badge = document.getElementById('zona-badge');
   badge.textContent = '📍 Zona: ' + zona;
   document.getElementById('form-body').style.display = 'block';
@@ -1101,8 +1106,8 @@ function setZona(zona) {
 
 function setScanZona(zona) {
   AppState.scanZona = zona;
-  document.getElementById('scan-zona-poli').classList.toggle('active', zona === 'Polideportivo');
-  document.getElementById('scan-zona-feria').classList.toggle('active', zona === 'Vecinos Av. de la Feria');
+  document.getElementById('scan-zona-poli').classList.toggle('active', zona === 'Parking Turismos');
+  document.getElementById('scan-zona-feria').classList.toggle('active', zona === 'Parking Autocaravanas');
   // Reset scan result
   document.getElementById('scan-result-area').innerHTML = '';
   lastScanPlate = null;
@@ -1508,7 +1513,7 @@ async function processEntry(plate) {
   }
   // Status is 'out' → register entry
   await DB.updateUser(plate, { status:'in', entryTime: nowS, entryTs: now });
-  await DB.addLog({ action:'entry', plate, name:`${user.nombre} ${user.apellidos}`, time: nowS, ts: now });
+  await DB.addLog({ action:'entry', plate, name:`${user.nombre} ${user.apellidos}`, time: nowS, ts: now, zona: user.zona || AppState.scanZona || '' });
   showScanResult({ type:'entry', user, time: nowS });
   toast(`✅ Entrada registrada · ${plate}`, 'success');
 }
@@ -1528,7 +1533,7 @@ async function processExit(plate) {
   // Status is 'in' → register exit
   const duration = user.entryTs ? Math.round((now - user.entryTs) / 60000) : 0;
   await DB.updateUser(plate, { status:'out', exitTime: nowS, lastEntry: user.entryTime, entryTime: null, entryTs: null });
-  await DB.addLog({ action:'exit', plate, name:`${user.nombre} ${user.apellidos}`, time: nowS, duration, ts: now });
+  await DB.addLog({ action:'exit', plate, name:`${user.nombre} ${user.apellidos}`, time: nowS, duration, ts: now, zona: user.zona || '' });
   showScanResult({ type:'exit', user, entryTime: user.entryTime, exitTime: nowS, duration });
   toast(`🏁 Salida registrada · ${plate}`, 'success');
 }
@@ -1913,7 +1918,7 @@ async function forceExit(plate) {
   const now = Date.now(); const nowS = nowStr();
   const duration = user.entryTs ? Math.round((now - user.entryTs) / 60000) : 0;
   await DB.updateUser(plate, { status:'out', exitTime: nowS, entryTime: null, entryTs: null });
-  await DB.addLog({ action:'exit', plate, name:`${user.nombre} ${user.apellidos}`, time: nowS, duration, ts: now, manual: true });
+  await DB.addLog({ action:'exit', plate, name:`${user.nombre} ${user.apellidos}`, time: nowS, duration, ts: now, manual: true, zona: user.zona || '' });
   toast(`Salida manual registrada · ${plate}`, 'success');
   renderAdmin();
 }
