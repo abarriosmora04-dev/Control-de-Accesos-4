@@ -912,42 +912,9 @@
 // ════════════════════════════════════════════════════════
 const API_URL = 'https://script.google.com/macros/s/AKfycbw_3iXG9z1tCFZ9sRFSC6rwrprU6FQg4hj5xnwjvGouqkA2ail47zf1jHu_AZwzXnaI/exec';
 
-// ── Configuración ──
-const CONFIG = {
-  SCAN_DEBOUNCE_MS: 4000,
-  SCAN_INTERVAL_MS: 350,
-  TOAST_DURATION_MS: 3200,
-  QR_RENDER_WAIT_MS: 900,
-  SCANNER_BORDER_FLASH_MS: 2500,
-  MIN_AGE: 16,
-  CACHE_TTL_MS: 30000,
-  MAX_LOGIN_ATTEMPTS: 5,
-  LOGIN_LOCKOUT_MS: 60000,
-};
-
-// ── HTML sanitizer — previene XSS en innerHTML ──
-function esc(str) {
-  const d = document.createElement('div');
-  d.appendChild(document.createTextNode(String(str ?? '')));
-  return d.innerHTML;
-}
-
-// ── Escape para atributos onclick (previene inyección via comillas) ──
-function escAttr(str) {
-  return esc(str).replace(/'/g, '&#39;').replace(/"/g, '&quot;');
-}
-
-// ── SHA-256 hash helper ──
-async function sha256(str) {
-  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
-  return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
-}
-
 // Cache local para no hacer peticiones innecesarias
 let _usersCache = null;
-let _usersCacheTs = 0;
 let _logsCache  = null;
-let _logsCacheTs = 0;
 
 // Flag para evitar doble envío en registerUser (race condition)
 let _isRegistering = false;
@@ -956,13 +923,9 @@ async function apiCall(params) {
   try {
     const url = API_URL + '?' + new URLSearchParams(params);
     const res = await fetch(url);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    if (data && data.error) throw new Error(data.error);
-    return data;
+    return await res.json();
   } catch(e) {
     console.error('API error:', e);
-    toast('Error de conexión: ' + e.message, 'error');
     return { error: e.toString() };
   }
 }
@@ -973,13 +936,9 @@ async function apiPost(body) {
       method: 'POST',
       body: JSON.stringify(body)
     });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    if (data && data.error) throw new Error(data.error);
-    return data;
+    return await res.json();
   } catch(e) {
     console.error('API error:', e);
-    toast('Error de conexión: ' + e.message, 'error');
     return { error: e.toString() };
   }
 }
@@ -987,7 +946,7 @@ async function apiPost(body) {
 const DB = {
   // ── READ ──
   async getUsers() {
-    if (_usersCache && (Date.now() - _usersCacheTs < CONFIG.CACHE_TTL_MS)) return _usersCache;
+    if (_usersCache) return _usersCache;
     showLoading(true);
     const data = await apiCall({ action: 'getUsers' });
     showLoading(false);
@@ -1009,15 +968,13 @@ const DB = {
       return n;
     }
     _usersCache = Array.isArray(data) ? data.map(normalizeUser) : [];
-    _usersCacheTs = Date.now();
     return _usersCache;
   },
 
   async getLogs() {
-    if (_logsCache && (Date.now() - _logsCacheTs < CONFIG.CACHE_TTL_MS)) return _logsCache;
+    if (_logsCache) return _logsCache;
     const data = await apiCall({ action: 'getLogs' });
     _logsCache = Array.isArray(data) ? data : [];
-    _logsCacheTs = Date.now();
     return _logsCache;
   },
 
@@ -1051,14 +1008,7 @@ const DB = {
     await apiPost({ action: 'addLog', entry });
   },
 
-  // Hash por defecto = SHA-256 de 'admin1234'
-  getAdminPwHash() {
-    return localStorage.getItem('cp_admin_pw_hash') || '937e8d5fbb48bd4949536cd65b8d35c426b80d2f830c5c308e2cdec422ae2244';
-  },
-  async setAdminPw(newPw) {
-    const hash = await sha256(newPw);
-    localStorage.setItem('cp_admin_pw_hash', hash);
-  },
+  getAdminPw() { return localStorage.getItem('cp_admin_pw') || 'admin1234'; },
 };
 
 function showLoading(show) {
@@ -1073,24 +1023,13 @@ function showLoading(show) {
 }
 
 // ════════════════════════════════════════════════════════
-//  ESTADO GLOBAL
-// ════════════════════════════════════════════════════════
-const AppState = {
-  selectedZona: null,
-  scanZona: null,
-  adminLoggedIn: false,
-  adminSessionToken: null,
-  loginAttempts: 0,
-  loginLockUntil: 0,
-  scannerBorderTimer: null,
-};
-
-// ════════════════════════════════════════════════════════
 //  ZONA MANAGEMENT
 // ════════════════════════════════════════════════════════
+window._selectedZona = null;
+window._scanZona = null;
 
 function setZona(zona) {
-  AppState.selectedZona = zona;
+  window._selectedZona = zona;
   document.getElementById('zona-poli').classList.toggle('active', zona === 'Polideportivo');
   document.getElementById('zona-feria').classList.toggle('active', zona === 'Vecinos Av. de la Feria');
   const badge = document.getElementById('zona-badge');
@@ -1100,7 +1039,7 @@ function setZona(zona) {
 }
 
 function setScanZona(zona) {
-  AppState.scanZona = zona;
+  window._scanZona = zona;
   document.getElementById('scan-zona-poli').classList.toggle('active', zona === 'Polideportivo');
   document.getElementById('scan-zona-feria').classList.toggle('active', zona === 'Vecinos Av. de la Feria');
   // Reset scan result
@@ -1112,12 +1051,13 @@ function setScanZona(zona) {
 // ════════════════════════════════════════════════════════
 //  NAVIGATION
 // ════════════════════════════════════════════════════════
+let adminLoggedIn = false;
 const pages = ['register','scan','admin'];
 
 function goTo(name) {
-  if (name === 'scan' && !AppState.adminLoggedIn) { showAdminLogin(); return; }
+  if (name === 'scan' && !adminLoggedIn) { showAdminLogin(); return; }
   if (name === 'admin') {
-    if (!AppState.adminLoggedIn) { showAdminLogin(); return; }
+    if (!adminLoggedIn) { showAdminLogin(); return; }
     showPage('admin'); renderAdmin(); return;
   }
   showPage(name);
@@ -1140,22 +1080,10 @@ function showAdminLogin() {
   document.getElementById('admin-pw').focus();
 }
 
-async function checkAdminLogin() {
-  // Rate limiting
-  if (Date.now() < AppState.loginLockUntil) {
-    const secs = Math.ceil((AppState.loginLockUntil - Date.now()) / 1000);
-    document.getElementById('login-error').textContent = `⏳ Demasiados intentos. Espera ${secs}s`;
-    return;
-  }
+function checkAdminLogin() {
   const pw = document.getElementById('admin-pw').value;
-  const hash = await sha256(pw);
-  if (hash === DB.getAdminPwHash()) {
-    AppState.adminLoggedIn = true;
-    AppState.loginAttempts = 0;
-    // Persist session
-    const token = crypto.randomUUID();
-    AppState.adminSessionToken = token;
-    sessionStorage.setItem('cp_session', token);
+  if (pw === DB.getAdminPw()) {
+    adminLoggedIn = true;
     // Show scanner button in nav
     document.getElementById('nav-scan').style.display = 'inline-block';
     document.getElementById('nav-admin-btn').textContent = '⚙ Admin ✓';
@@ -1163,22 +1091,13 @@ async function checkAdminLogin() {
     renderAdmin();
     toast('Bienvenido, Administrador', 'success');
   } else {
-    AppState.loginAttempts++;
-    if (AppState.loginAttempts >= CONFIG.MAX_LOGIN_ATTEMPTS) {
-      AppState.loginLockUntil = Date.now() + CONFIG.LOGIN_LOCKOUT_MS;
-      AppState.loginAttempts = 0;
-      document.getElementById('login-error').textContent = '🔒 Demasiados intentos. Bloqueado 60s';
-    } else {
-      document.getElementById('login-error').textContent = '❌ Contraseña incorrecta';
-    }
+    document.getElementById('login-error').textContent = '❌ Contraseña incorrecta';
     document.getElementById('admin-pw').value = '';
   }
 }
 
 function adminLogout() {
-  AppState.adminLoggedIn = false;
-  AppState.adminSessionToken = null;
-  sessionStorage.removeItem('cp_session');
+  adminLoggedIn = false;
   // Hide scanner button, reset admin label
   document.getElementById('nav-scan').style.display = 'none';
   document.getElementById('nav-admin-btn').textContent = '⚙ Admin';
@@ -1204,7 +1123,7 @@ async function registerUser() {
   const marca     = document.getElementById('f-marca').value.trim();
   const modelo    = document.getElementById('f-modelo').value.trim();
   const plate     = document.getElementById('f-matricula').value.trim().toUpperCase().replace(/\s/g,'');
-  const zona      = AppState.selectedZona || '';
+  const zona      = window._selectedZona || '';
 
   if (!zona) { toast('Por favor selecciona una zona primero', 'error'); _isRegistering = false; return; }
   if (!nombre||!apellidos||!nacimiento||!dni||!email||!telefono||!marca||!modelo||!plate) {
@@ -1213,28 +1132,12 @@ async function registerUser() {
   if (!/^[A-Z0-9]{5,9}$/.test(plate)) {
     toast('Formato de matrícula no válido', 'error'); _isRegistering = false; return;
   }
-  // ── Validación de DNI/NIE ──
-  if (!/^[0-9]{8}[A-Za-z]$|^[XYZxyz][0-9]{7}[A-Za-z]$/i.test(dni)) {
-    toast('Formato de DNI/NIE no válido', 'error'); _isRegistering = false; return;
-  }
-  // ── Validación de email ──
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    toast('Formato de email no válido', 'error'); _isRegistering = false; return;
-  }
-  // ── Validación de teléfono ──
-  if (!/^[+0-9\s]{9,15}$/.test(telefono)) {
-    toast('Formato de teléfono no válido', 'error'); _isRegistering = false; return;
-  }
 
-  // ── AGE CHECK — calcula edad dinámica, mínimo CONFIG.MIN_AGE ──
+  // ── BIRTH YEAR CHECK — no se permiten nacidos en 2009 o posterior ──
   if (nacimiento) {
-    const birthDate = new Date(nacimiento);
-    const today = new Date();
-    let age = today.getFullYear() - birthDate.getFullYear();
-    const mDiff = today.getMonth() - birthDate.getMonth();
-    if (mDiff < 0 || (mDiff === 0 && today.getDate() < birthDate.getDate())) age--;
-    if (age < CONFIG.MIN_AGE) {
-      toast(`⛔ No se puede registrar a menores de ${CONFIG.MIN_AGE} años`, 'error');
+    const birthYear = new Date(nacimiento).getFullYear();
+    if (birthYear >= 2009) {
+      toast('⛔ No se puede registrar a personas nacidas en 2009 o después', 'error');
       _isRegistering = false;
       return;
     }
@@ -1446,7 +1349,7 @@ async function startScanner() {
     document.getElementById('btn-start-cam').style.display = 'none';
     document.getElementById('btn-stop-cam').style.display = 'inline-block';
     lastScanPlate = null;
-    scanInterval = setInterval(scanFrame, CONFIG.SCAN_INTERVAL_MS);
+    scanInterval = setInterval(scanFrame, 350);
     toast('Cámara activa — modo ' + (scanMode === 'entry' ? 'ENTRADA' : 'SALIDA'), 'success');
   } catch(e) {
     toast('No se pudo acceder a la cámara', 'error');
@@ -1481,7 +1384,7 @@ async function scanFrame() {
     lastScanPlate = parsed.plate;
     if (scanMode === 'entry') await processEntry(parsed.plate);
     else await processExit(parsed.plate);
-    setTimeout(() => { lastScanPlate = null; }, CONFIG.SCAN_DEBOUNCE_MS);
+    setTimeout(() => { lastScanPlate = null; }, 4000);
   }
 }
 
@@ -1501,12 +1404,12 @@ async function processEntry(plate) {
   // Always enforce zone: if scanner zone is set AND user has a zone, they must match.
   // If scanner zone is set but user has no zone, allow entry (legacy/unassigned user).
   // If scanner zone is NOT set, block entry to prevent uncontrolled access.
-  if (!AppState.scanZona) {
+  if (!window._scanZona) {
     showScanResult({ type:'error', msg:'⛔ El operador debe seleccionar la zona de escaneo antes de permitir entradas', plate });
     toast('⛔ Selecciona la zona de escaneo primero', 'error'); return;
   }
-  if (user.zona && user.zona !== AppState.scanZona) {
-    showScanResult({ type:'error', msg:`⛔ Acceso denegado: este vehículo pertenece a la zona "${user.zona}" y no puede acceder a "${AppState.scanZona}"`, plate });
+  if (user.zona && user.zona !== window._scanZona) {
+    showScanResult({ type:'error', msg:`⛔ Acceso denegado: este vehículo pertenece a la zona "${user.zona}" y no puede acceder a "${window._scanZona}"`, plate });
     toast(`⛔ Zona incorrecta: ${user.zona}`, 'error'); return;
   }
   // Status is 'out' → register entry
@@ -1530,8 +1433,8 @@ async function processExit(plate) {
   }
   // Status is 'in' → register exit
   const duration = user.entryTs ? Math.round((now - user.entryTs) / 60000) : 0;
-  await DB.updateUser(plate, { status:'out', exitTime: nowS, lastEntry: user.entryTime, entryTime: null, entryTs: null });
-  await DB.addLog({ action:'exit', plate, name:`${user.nombre} ${user.apellidos}`, time: nowS, duration, ts: now });
+  DB.updateUser(plate, { status:'out', exitTime: nowS, lastEntry: user.entryTime, entryTime: null, entryTs: null });
+  DB.addLog({ action:'exit', plate, name:`${user.nombre} ${user.apellidos}`, time: nowS, duration, ts: now });
   showScanResult({ type:'exit', user, entryTime: user.entryTime, exitTime: nowS, duration });
   toast(`🏁 Salida registrada · ${plate}`, 'success');
 }
@@ -1541,65 +1444,73 @@ function flashScannerBorder(type) {
   if (!box) return;
   box.classList.remove('valid', 'invalid');
   box.classList.add(type === 'valid' ? 'valid' : 'invalid');
-  clearTimeout(AppState.scannerBorderTimer);
-  AppState.scannerBorderTimer = setTimeout(() => {
+  clearTimeout(window._scannerBorderTimer);
+  window._scannerBorderTimer = setTimeout(() => {
     box.classList.remove('valid', 'invalid');
-  }, CONFIG.SCANNER_BORDER_FLASH_MS);
+  }, 2500);
 }
 
 function showScanResult(r) {
   const area = document.getElementById('scan-result-area');
-  const isError = ['error', 'not-in', 'already-in'].includes(r.type);
-  flashScannerBorder(isError ? 'invalid' : 'valid');
-  const user = r.user || {};
-  const plate = esc(r.plate || user.plate || '');
-  const name = user.nombre ? `${esc(user.nombre)} ${esc(user.apellidos)}` : '';
-
-  const templates = {
-    'error': `
+  if (r.type === 'error') {
+    flashScannerBorder('invalid');
+    area.innerHTML = `
       <div class="scan-result error">
         <div class="r-icon">❌</div>
-        <div class="r-plate">${plate}</div>
+        <div class="r-plate">${r.plate}</div>
         <div class="r-action">QR no reconocido</div>
-        <div class="r-detail">${esc(r.msg)}</div>
-      </div>`,
-    'not-in': `
+        <div class="r-detail">${r.msg}</div>
+      </div>`;
+    return;
+  }
+  if (r.type === 'not-in') {
+    flashScannerBorder('invalid');
+    area.innerHTML = `
       <div class="scan-result error">
         <div class="r-icon">🚫</div>
-        <div class="r-plate">${plate}</div>
-        <div class="r-name">${name}</div>
+        <div class="r-plate">${r.user.plate}</div>
+        <div class="r-name">${r.user.nombre} ${r.user.apellidos}</div>
         <div class="r-action">NO ESTÁ DENTRO</div>
         <div class="r-detail">Este vehículo no ha registrado entrada — no se puede registrar salida</div>
-      </div>`,
-    'already-in': `
+      </div>`;
+    area.scrollIntoView({ behavior:'smooth', block:'nearest' });
+    return;
+  }
+  if (r.type === 'already-in') {
+    flashScannerBorder('invalid');
+    area.innerHTML = `
       <div class="scan-result already-in">
         <div class="r-icon">⚠️</div>
-        <div class="r-plate">${plate}</div>
-        <div class="r-name">${name}</div>
+        <div class="r-plate">${r.user.plate}</div>
+        <div class="r-name">${r.user.nombre} ${r.user.apellidos}</div>
         <div class="r-action">⛔ YA ESTÁ DENTRO</div>
-        <div class="r-detail">Entrada registrada: ${esc(r.entryTime)}</div>
+        <div class="r-detail">Entrada registrada: ${r.entryTime}</div>
         <div class="r-detail">Este QR no puede usarse de nuevo hasta la salida</div>
-      </div>`,
-    'entry': `
+      </div>`;
+    return;
+  }
+  if (r.type === 'entry') {
+    flashScannerBorder('valid');
+    area.innerHTML = `
       <div class="scan-result entry">
         <div class="r-icon">🚗</div>
-        <div class="r-plate">${plate}</div>
-        <div class="r-name">${name} · ${esc(user.marca)} ${esc(user.modelo)}</div>
+        <div class="r-plate">${r.user.plate}</div>
+        <div class="r-name">${r.user.nombre} ${r.user.apellidos} · ${r.user.marca} ${r.user.modelo}</div>
         <div class="r-action">✅ ENTRADA REGISTRADA</div>
-        <div class="r-detail">Hora: ${esc(r.time)}</div>
-      </div>`,
-    'exit': `
+        <div class="r-detail">Hora: ${r.time}</div>
+      </div>`;
+  } else {
+    flashScannerBorder('valid');
+    area.innerHTML = `
       <div class="scan-result exit">
         <div class="r-icon">👋</div>
-        <div class="r-plate">${plate}</div>
-        <div class="r-name">${name} · ${esc(user.marca)} ${esc(user.modelo)}</div>
+        <div class="r-plate">${r.user.plate}</div>
+        <div class="r-name">${r.user.nombre} ${r.user.apellidos} · ${r.user.marca} ${r.user.modelo}</div>
         <div class="r-action">🏁 SALIDA REGISTRADA</div>
-        <div class="r-detail">Entrada: ${esc(r.entryTime || '—')} &nbsp;·&nbsp; Salida: ${esc(r.exitTime)}</div>
-        <div class="r-duration">⏱ ${esc(r.duration)} minutos en parking</div>
-      </div>`,
-  };
-
-  area.innerHTML = templates[r.type] || '';
+        <div class="r-detail">Entrada: ${r.entryTime || '—'} &nbsp;·&nbsp; Salida: ${r.exitTime}</div>
+        <div class="r-duration">⏱ ${r.duration} minutos en parking</div>
+      </div>`;
+  }
   area.scrollIntoView({ behavior:'smooth', block:'nearest' });
 }
 
@@ -1607,12 +1518,6 @@ function showScanResult(r) {
 //  ADMIN PANEL
 // ════════════════════════════════════════════════════════
 async function renderAdmin() {
-  // Loading states
-  const tableEl = document.getElementById('users-table');
-  const logEl = document.getElementById('activity-log');
-  if (tableEl) tableEl.innerHTML = '<div class="empty-state"><div class="e-icon">⏳</div><p>Cargando datos...</p></div>';
-  if (logEl) logEl.innerHTML = '<div class="empty-state"><div class="e-icon">⏳</div><p>Cargando actividad...</p></div>';
-
   const users = await DB.getUsers();
   const logs  = await DB.getLogs();
   const search = (document.getElementById('filter-search')?.value || '').toLowerCase();
@@ -1656,29 +1561,27 @@ async function renderAdmin() {
           </tr>
         </thead>
         <tbody>
-          ${filtered.map(u => {
-            const p = escAttr(u.plate);
-            return `
+          ${filtered.map(u => `
             <tr>
-              <td class="td-plate">${esc(u.plate)}</td>
-              <td class="td-name">${esc(u.nombre)} ${esc(u.apellidos)}</td>
-              <td class="td-car" style="font-size:11px">${esc(u.zona || '—')}</td>
-              <td class="td-car">${esc(u.marca)} ${esc(u.modelo)}</td>
+              <td class="td-plate">${u.plate}</td>
+              <td class="td-name">${u.nombre} ${u.apellidos}</td>
+              <td class="td-car" style="font-size:11px">${u.zona || '—'}</td>
+              <td class="td-car">${u.marca} ${u.modelo}</td>
               <td>
                 ${u.status === 'in'
                   ? `<span class="badge-in"><span class="dot"></span>Dentro</span>`
                   : `<span class="badge-out"><span class="dot"></span>Fuera</span>`}
               </td>
-              <td class="td-time">${esc(u.status === 'in' ? u.entryTime : (u.exitTime || u.registeredAt || '—'))}</td>
+              <td class="td-time">${u.status === 'in' ? u.entryTime : (u.exitTime || u.registeredAt || '—')}</td>
               <td>
-                <button class="btn-detail" onclick="showUserModal('${p}')">Ver</button>
-                <button class="btn-detail" style="color:var(--accent);margin-left:4px" onclick="adminDownloadPdf('${p}')">📄 PDF</button>
+                <button class="btn-detail" onclick="showUserModal('${u.plate}')">Ver</button>
+                <button class="btn-detail" style="color:var(--accent);margin-left:4px" onclick="adminDownloadPdf('${u.plate}')">📄 PDF</button>
                 ${u.status === 'in'
-                  ? `<button class="btn-detail" style="color:var(--accent2);margin-left:4px" onclick="forceExit('${p}')">Salida</button>`
+                  ? `<button class="btn-detail" style="color:var(--accent2);margin-left:4px" onclick="forceExit('${u.plate}')">Salida</button>`
                   : ''}
               </td>
-            </tr>`;
-          }).join('')}
+            </tr>
+          `).join('')}
         </tbody>
       </table>`;
   }
@@ -1691,12 +1594,12 @@ async function renderAdmin() {
     logEl.innerHTML = logs.slice(0, 50).map(l => `
       <div class="log-item">
         <div class="log-icon">${l.action === 'entry' ? '🚗' : '🏁'}</div>
-        <div class="log-plate">${esc(l.plate)}</div>
-        <div class="log-name">${esc(l.name)}</div>
-        <div class="log-time" style="color:var(--accent);font-size:10px">${esc(l.zona || '')}</div>
+        <div class="log-plate">${l.plate}</div>
+        <div class="log-name">${l.name}</div>
+        <div class="log-time" style="color:var(--accent);font-size:10px">${l.zona || ''}</div>
         <div class="${l.action === 'entry' ? 'log-action-entry' : 'log-action-exit'}">${l.action === 'entry' ? 'ENTRADA' : 'SALIDA'}</div>
-        ${l.duration !== undefined ? `<div class="log-time" style="color:var(--accent2)">${esc(l.duration)} min</div>` : ''}
-        <div class="log-time">${esc(l.time)}</div>
+        ${l.duration !== undefined ? `<div class="log-time" style="color:var(--accent2)">${l.duration} min</div>` : ''}
+        <div class="log-time">${l.time}</div>
       </div>`).join('');
   }
 }
@@ -1742,7 +1645,7 @@ async function adminDownloadPdf(plate) {
   });
 
   // Wait for QR to render
-  await new Promise(r => setTimeout(r, CONFIG.QR_RENDER_WAIT_MS));
+  await new Promise(r => setTimeout(r, 900));
 
   const canvas = tempDiv.querySelector('canvas');
   if (!canvas) { toast('Error generando QR — reintenta', 'error'); return; }
@@ -1827,20 +1730,20 @@ async function showUserModal(plate) {
   const entryTime   = u.entryTime || u.entrytime || u.entrydate || '';
 
   document.getElementById('modal-content').innerHTML = `
-    <h3>${esc(nombre)} ${esc(apellidos)}</h3>
-    ${row('DNI / NIE', esc(dni))}
-    ${row('Correo', esc(email))}
-    ${row('Fecha nac.', esc(nacimiento))}
-    ${row('Vehículo', `${esc(marca)} ${esc(modelo)}`)}
-    ${row('Matrícula', `<span style="font-family:var(--font-mono);letter-spacing:2px">${esc(plate2)}</span>`)}
+    <h3>${nombre} ${apellidos}</h3>
+    ${row('DNI / NIE', dni)}
+    ${row('Correo', email)}
+    ${row('Fecha nac.', nacimiento)}
+    ${row('Vehículo', `${marca} ${modelo}`)}
+    ${row('Matrícula', `<span style="font-family:var(--font-mono);letter-spacing:2px">${plate2}</span>`)}
     ${row('Estado', status === 'in' ? '<span style="color:var(--red)">● Dentro</span>' : '<span style="color:var(--accent)">● Fuera</span>')}
-    ${status === 'in' && entryTime ? row('Entrada', esc(entryTime)) : ''}
-    ${row('Teléfono', esc(telefono))}
-    ${row('Zona', esc(zona))}
-    ${row('Registrado', esc(regAt))}
+    ${status === 'in' && entryTime ? row('Entrada', entryTime) : ''}
+    ${row('Teléfono', telefono)}
+    ${row('Zona', zona)}
+    ${row('Registrado', regAt)}
     <div style="display:flex;gap:8px;margin-top:4px">
       <button class="modal-close" style="flex:1" onclick="closeModal()">Cerrar</button>
-      <button class="modal-close" style="flex:1;background:var(--accent);color:#fff;border-color:var(--accent)" onclick="closeModal();openAdminQR('${escAttr(plate2)}')">Ver QR ↗</button>
+      <button class="modal-close" style="flex:1;background:var(--accent);color:#fff;border-color:var(--accent)" onclick="closeModal();openAdminQR('${plate2}')">Ver QR ↗</button>
     </div>`;
   document.getElementById('modal-overlay').classList.add('open');
 }
@@ -1863,7 +1766,7 @@ async function openAdminQR(plate) {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>QR · ${esc(plate)}</title>
+<title>QR · ${plate}</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"><\/script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Instrument+Sans:wght@400;600;700&family=Roboto+Mono:wght@400;500&display=swap');
@@ -1885,9 +1788,9 @@ async function openAdminQR(plate) {
   <div class="brand">ControlPark</div>
   <div class="subtitle">Pase de Acceso</div>
   <div class="qr-wrap"><div id="qr"></div></div>
-  <div class="name">${esc(nombre)} ${esc(apellidos)}</div>
-  <div class="plate">${esc(plate)}</div>
-  <div class="zona">${esc(zona)}</div>
+  <div class="name">${nombre} ${apellidos}</div>
+  <div class="plate">${plate}</div>
+  <div class="zona">${zona}</div>
   <button class="close-btn" onclick="window.close()">Cerrar pestaña</button>
 </div>
 <script>
@@ -1912,7 +1815,7 @@ function row(k, v) {
 function closeModal() { document.getElementById('modal-overlay').classList.remove('open'); }
 
 async function forceExit(plate) {
-  if (!confirm(`¿Registrar salida manual para ${esc(plate)}?`)) return;
+  if (!confirm(`¿Registrar salida manual para ${plate}?`)) return;
   const user = await DB.getUserByPlate(plate);
   const now = Date.now(); const nowS = nowStr();
   const duration = user.entryTs ? Math.round((now - user.entryTs) / 60000) : 0;
@@ -1949,24 +1852,9 @@ let toastTimer;
 function toast(msg, type='success') {
   clearTimeout(toastTimer);
   const el = document.getElementById('toast');
-  const inner = document.createElement('div');
-  inner.className = `toast-inner ${type}`;
-  inner.textContent = msg;
-  el.innerHTML = '';
-  el.appendChild(inner);
-  toastTimer = setTimeout(() => { el.innerHTML = ''; }, CONFIG.TOAST_DURATION_MS);
+  el.innerHTML = `<div class="toast-inner ${type}">${msg}</div>`;
+  toastTimer = setTimeout(() => { el.innerHTML = ''; }, 3200);
 }
-
-// ── Restaurar sesión admin tras refresh ──
-window.addEventListener('DOMContentLoaded', () => {
-  const saved = sessionStorage.getItem('cp_session');
-  if (saved) {
-    AppState.adminLoggedIn = true;
-    AppState.adminSessionToken = saved;
-    document.getElementById('nav-scan').style.display = 'inline-block';
-    document.getElementById('nav-admin-btn').textContent = '⚙ Admin ✓';
-  }
-});
 
 // Page unload: stop scanner
 window.addEventListener('beforeunload', stopScanner);
