@@ -675,9 +675,9 @@
     <div class="zona-selector" id="zona-selector">
       <div class="zona-title">¿A qué zona perteneces?</div>
       <div class="zona-btns">
-        <button class="zona-btn" id="zona-poli" onclick="setZona('Parking Turismos')">
+        <button class="zona-btn" id="zona-poli" onclick="setZona('Parking VIP')">
           <span class="zona-icon">🚗</span>
-          <span class="zona-name">Parking Turismos</span>
+          <span class="zona-name">Parking VIP</span>
         </button>
         <button class="zona-btn" id="zona-feria" onclick="setZona('Parking Autocaravanas')">
           <span class="zona-icon">🚐</span>
@@ -724,12 +724,13 @@
         <input class="form-input" id="f-modelo" type="text" placeholder="Corolla">
       </div>
       <div class="form-group full">
-        <label class="form-label">Matrícula</label>
+        <label class="form-label">Matrícula *</label>
         <input class="form-input plate-input" id="f-matricula" type="text"
           placeholder="0000 ABC" maxlength="9"
           oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9 ]/g,'')">
       </div>
     </div>
+    <p style="font-size:11px; color:var(--text3); margin-top:10px; font-family:var(--font-mono); letter-spacing:0.3px">* Solo la matrícula es obligatoria. El resto de campos son opcionales.</p>
 
     <button class="btn-primary" id="btn-generate-qr" onclick="registerUser()">Pagar y Generar QR de Acceso →</button>
 
@@ -804,9 +805,9 @@
     <div class="zona-selector" style="margin-bottom:12px">
       <div class="zona-title">Zona de escaneo</div>
       <div class="zona-btns">
-        <button class="zona-btn" id="scan-zona-poli" onclick="setScanZona('Parking Turismos')">
+        <button class="zona-btn" id="scan-zona-poli" onclick="setScanZona('Parking VIP')">
           <span class="zona-icon">🚗</span>
-          <span class="zona-name">Parking Turismos</span>
+          <span class="zona-name">Parking VIP</span>
         </button>
         <button class="zona-btn" id="scan-zona-feria" onclick="setScanZona('Parking Autocaravanas')">
           <span class="zona-icon">🚐</span>
@@ -898,7 +899,7 @@
       <input class="filter-input" id="filter-search" placeholder="Buscar por nombre, matrícula, DNI..." oninput="renderAdmin()">
       <select class="filter-select" id="filter-zona" onchange="renderAdmin()">
         <option value="all">Todas las zonas</option>
-        <option value="Parking Turismos">Parking Turismos</option>
+        <option value="Parking VIP">Parking VIP</option>
         <option value="Parking Autocaravanas">Av. de la Feria</option>
       </select>
       <select class="filter-select" id="filter-status" onchange="renderAdmin()">
@@ -955,7 +956,7 @@ const CONFIG = {
   // ── Redsys Payment ──
   REDSYS_URL: 'https://sis-t.redsys.es:25443/sis/realizarPago', // TEST — producción: https://sis.redsys.es/sis/realizarPago
   PRICES: {
-    'Parking Turismos': 500,       // 5.00 EUR (en céntimos)
+    'Parking VIP': 500,       // 5.00 EUR (en céntimos)
     'Parking Autocaravanas': 1000  // 10.00 EUR (en céntimos)
   },
 };
@@ -1131,7 +1132,7 @@ const AppState = {
 
 function setZona(zona) {
   AppState.selectedZona = zona;
-  document.getElementById('zona-poli').classList.toggle('active', zona === 'Parking Turismos');
+  document.getElementById('zona-poli').classList.toggle('active', zona === 'Parking VIP');
   document.getElementById('zona-feria').classList.toggle('active', zona === 'Parking Autocaravanas');
   const badge = document.getElementById('zona-badge');
   badge.textContent = '📍 Zona: ' + zona;
@@ -1148,7 +1149,7 @@ function setZona(zona) {
 
 function setScanZona(zona) {
   AppState.scanZona = zona;
-  document.getElementById('scan-zona-poli').classList.toggle('active', zona === 'Parking Turismos');
+  document.getElementById('scan-zona-poli').classList.toggle('active', zona === 'Parking VIP');
   document.getElementById('scan-zona-feria').classList.toggle('active', zona === 'Parking Autocaravanas');
   // Reset scan result
   document.getElementById('scan-result-area').innerHTML = '';
@@ -1254,22 +1255,22 @@ async function registerUser() {
   const zona      = AppState.selectedZona || '';
 
   if (!zona) { toast('Por favor selecciona una zona primero', 'error'); _isRegistering = false; return; }
-  if (!nombre||!apellidos||!nacimiento||!dni||!email||!telefono||!marca||!modelo||!plate) {
-    toast('Por favor rellena todos los campos', 'error'); _isRegistering = false; return;
+  if (!plate) {
+    toast('La matrícula es obligatoria', 'error'); _isRegistering = false; return;
   }
   if (!/^[A-Z0-9]{5,9}$/.test(plate)) {
     toast('Formato de matrícula no válido', 'error'); _isRegistering = false; return;
   }
-  // ── Validación de DNI/NIE ──
-  if (!/^[0-9]{8}[A-Za-z]$|^[XYZxyz][0-9]{7}[A-Za-z]$/i.test(dni)) {
+  // ── Validación de DNI/NIE (solo si se rellenó) ──
+  if (dni && !/^[0-9]{8}[A-Za-z]$|^[XYZxyz][0-9]{7}[A-Za-z]$/i.test(dni)) {
     toast('Formato de DNI/NIE no válido', 'error'); _isRegistering = false; return;
   }
-  // ── Validación de email ──
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+  // ── Validación de email (solo si se rellenó) ──
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     toast('Formato de email no válido', 'error'); _isRegistering = false; return;
   }
-  // ── Validación de teléfono ──
-  if (!/^[+0-9\s]{9,15}$/.test(telefono)) {
+  // ── Validación de teléfono (solo si se rellenó) ──
+  if (telefono && !/^[+0-9\s]{9,15}$/.test(telefono)) {
     toast('Formato de teléfono no válido', 'error'); _isRegistering = false; return;
   }
 
@@ -1298,21 +1299,23 @@ async function registerUser() {
   // Force fresh data from Sheets before duplicate checks
   _usersCache = null;
 
-  // Check DNI first — nobody can have two QRs
-  const existingDni = await DB.getUserByDni(dni);
-  if (existingDni) {
-    // If pending payment, re-initiate payment
-    if (existingDni.status === 'pending_payment') {
-      toast('Tienes un pago pendiente. Redirigiendo al pago...', 'warn');
-      await initiatePayment(existingDni);
+  // Check DNI first — nobody can have two QRs (only if DNI was provided)
+  if (dni) {
+    const existingDni = await DB.getUserByDni(dni);
+    if (existingDni) {
+      // If pending payment, re-initiate payment
+      if (existingDni.status === 'pending_payment') {
+        toast('Tienes un pago pendiente. Redirigiendo al pago...', 'warn');
+        await initiatePayment(existingDni);
+        return;
+      }
+      btn.disabled = false;
+      loadingEl.classList.remove('active');
+      _isRegistering = false;
+      toast(`⛔ Este DNI ya está registrado (${existingDni.plate})`, 'error');
+      showDniBlockedMsg(existingDni);
       return;
     }
-    btn.disabled = false;
-    loadingEl.classList.remove('active');
-    _isRegistering = false;
-    toast(`⛔ Este DNI ya está registrado (${existingDni.plate})`, 'error');
-    showDniBlockedMsg(existingDni);
-    return;
   }
 
   // Check plate duplicate
