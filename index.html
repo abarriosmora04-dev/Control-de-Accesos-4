@@ -621,6 +621,13 @@
     color: var(--accent); font-size: 12px; font-weight: 600;
     font-family: var(--font-mono); letter-spacing: 0.5px;
   }
+  .price-badge {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 10px 18px; border-radius: 20px; margin-bottom: 24px; margin-left: 8px;
+    background: rgba(52,211,153,0.08); border: 1px solid rgba(52,211,153,0.25);
+    color: var(--green); font-size: 14px; font-weight: 700;
+    font-family: var(--font-mono); letter-spacing: 0.5px;
+  }
 
   /* ── LOADING ── */
   .loading-overlay {
@@ -681,6 +688,7 @@
 
     <div id="form-body" style="display:none">
     <div class="zona-selected-badge" id="zona-badge"></div>
+    <div id="price-info" class="price-badge" style="display:none"></div>
     <div class="form-grid">
       <div class="form-group">
         <label class="form-label">Nombre</label>
@@ -723,7 +731,7 @@
       </div>
     </div>
 
-    <button class="btn-primary" id="btn-generate-qr" onclick="registerUser()">Generar mi QR de Acceso →</button>
+    <button class="btn-primary" id="btn-generate-qr" onclick="registerUser()">Pagar y Generar QR de Acceso →</button>
 
     <!-- LOADING STATE -->
     <div id="qr-loading" style="display:none; text-align:center; padding:32px 0 16px; flex-direction:column; align-items:center; gap:16px">
@@ -748,6 +756,27 @@
       ">⬇ Descargar QR en PDF</button>
     </div>
     </div><!-- /form-body -->
+
+    <!-- HIDDEN REDSYS FORM -->
+    <form id="redsys-form" action="" method="POST" style="display:none">
+      <input type="hidden" name="Ds_SignatureVersion" value="HMAC_SHA256_V1">
+      <input type="hidden" name="Ds_MerchantParameters" id="redsys-params">
+      <input type="hidden" name="Ds_Signature" id="redsys-signature">
+    </form>
+  </div>
+
+  <!-- ══════════════════════════════════════
+       PAGE: RESULTADO DE PAGO
+  ══════════════════════════════════════ -->
+  <div id="page-payment-result" class="page">
+    <div style="text-align:center; padding:60px 20px">
+      <div id="payment-spinner" class="qr-spinner" style="margin:0 auto 24px"></div>
+      <div class="page-title" style="font-size:36px">Verificando <span class="accent">Pago</span></div>
+      <p id="payment-status-msg" class="page-sub" style="margin-top:16px">Comprobando el estado de tu pago...</p>
+      <div id="payment-error-actions" style="display:none; margin-top:24px">
+        <button class="btn-primary" onclick="showPage('register')" style="max-width:300px; margin:0 auto">Volver al registro</button>
+      </div>
+    </div>
   </div>
 
   <!-- ══════════════════════════════════════
@@ -923,6 +952,12 @@ const CONFIG = {
   CACHE_TTL_MS: 30000,
   MAX_LOGIN_ATTEMPTS: 5,
   LOGIN_LOCKOUT_MS: 60000,
+  // ── Redsys Payment ──
+  REDSYS_URL: 'https://sis-t.redsys.es:25443/sis/realizarPago', // TEST — producción: https://sis.redsys.es/sis/realizarPago
+  PRICES: {
+    'Parking Turismos': 500,       // 5.00 EUR (en céntimos)
+    'Parking Autocaravanas': 1000  // 10.00 EUR (en céntimos)
+  },
 };
 
 // ── HTML sanitizer — previene XSS en innerHTML ──
@@ -1100,6 +1135,13 @@ function setZona(zona) {
   document.getElementById('zona-feria').classList.toggle('active', zona === 'Parking Autocaravanas');
   const badge = document.getElementById('zona-badge');
   badge.textContent = '📍 Zona: ' + zona;
+  // Show price for selected zone
+  const price = CONFIG.PRICES[zona];
+  if (price) {
+    const priceEl = document.getElementById('price-info');
+    priceEl.textContent = '💳 Precio: ' + (price / 100).toFixed(2) + ' €';
+    priceEl.style.display = 'inline-flex';
+  }
   document.getElementById('form-body').style.display = 'block';
   document.getElementById('form-body').scrollIntoView({ behavior:'smooth', block:'start' });
 }
@@ -1259,6 +1301,12 @@ async function registerUser() {
   // Check DNI first — nobody can have two QRs
   const existingDni = await DB.getUserByDni(dni);
   if (existingDni) {
+    // If pending payment, re-initiate payment
+    if (existingDni.status === 'pending_payment') {
+      toast('Tienes un pago pendiente. Redirigiendo al pago...', 'warn');
+      await initiatePayment(existingDni);
+      return;
+    }
     btn.disabled = false;
     loadingEl.classList.remove('active');
     _isRegistering = false;
@@ -1270,6 +1318,12 @@ async function registerUser() {
   // Check plate duplicate
   const existing = await DB.getUserByPlate(plate);
   if (existing) {
+    // If pending payment, re-initiate payment
+    if (existing.status === 'pending_payment') {
+      toast('Tienes un pago pendiente. Redirigiendo al pago...', 'warn');
+      await initiatePayment(existing);
+      return;
+    }
     btn.disabled = false;
     loadingEl.classList.remove('active');
     _isRegistering = false;
@@ -1277,10 +1331,13 @@ async function registerUser() {
     showQR(existing); return;
   }
 
-  const user = { nombre, apellidos, nacimiento, dni, email, telefono, marca, modelo, plate, zona, status:'out', registeredAt: nowStr(), entryTime: null, entryTs: null };
+  // Create user with pending_payment status and orderId
+  const orderId = generateOrderId();
+  const user = { nombre, apellidos, nacimiento, dni, email, telefono, marca, modelo, plate, zona, status:'pending_payment', orderId, registeredAt: nowStr(), entryTime: null, entryTs: null };
   await DB.addUser(user);
-  showQR(user);
-  toast(`QR generado para ${plate}`, 'success');
+  // Redirect to Redsys payment page
+  await initiatePayment(user);
+  toast('Redirigiendo al pago...', 'success');
 
   } catch(err) {
     console.error('registerUser error:', err);
@@ -1404,6 +1461,139 @@ function downloadQRpdf() {
   doc.text('Presenta este pase en la entrada y salida', W/2, 72.5, { align:'center' });
 
   doc.save(`ControlPark_${user.plate}.pdf`);
+}
+
+// ════════════════════════════════════════════════════════
+//  PAYMENT — Redsys Integration
+// ════════════════════════════════════════════════════════
+
+function generateOrderId() {
+  // Redsys requires 4-12 chars, first 4 must be digits
+  const ts = Date.now().toString().slice(-8);
+  const rand = Math.random().toString(36).substring(2, 6).toUpperCase();
+  return ts + rand;
+}
+
+async function initiatePayment(user) {
+  const price = CONFIG.PRICES[user.zona];
+  if (!price) {
+    toast('Error: precio no configurado para esta zona', 'error');
+    return;
+  }
+
+  const result = await apiPost({
+    action: 'generateRedsysParams',
+    orderId: user.orderId,
+    amount: price,
+    plate: user.plate
+  });
+
+  if (result.error) {
+    toast('Error al preparar el pago: ' + result.error, 'error');
+    return;
+  }
+
+  // Save recovery data before redirecting away
+  sessionStorage.setItem('cp_pending_order', JSON.stringify({
+    orderId: user.orderId,
+    plate: user.plate
+  }));
+
+  // Fill and submit the hidden Redsys form
+  const form = document.getElementById('redsys-form');
+  form.action = CONFIG.REDSYS_URL;
+  document.getElementById('redsys-params').value = result.Ds_MerchantParameters;
+  document.getElementById('redsys-signature').value = result.Ds_Signature;
+  form.submit(); // Browser navigates to Redsys bank page
+}
+
+async function checkPaymentReturn() {
+  const params = new URLSearchParams(window.location.search);
+  const dsParams = params.get('Ds_MerchantParameters');
+  const dsSignature = params.get('Ds_Signature');
+
+  if (!dsParams || !dsSignature) return; // Not a payment return
+
+  // Show payment verification page
+  showPage('payment-result');
+  const msgEl = document.getElementById('payment-status-msg');
+  msgEl.textContent = 'Comprobando el estado de tu pago...';
+  document.getElementById('payment-error-actions').style.display = 'none';
+
+  const pending = JSON.parse(sessionStorage.getItem('cp_pending_order') || 'null');
+  if (!pending) {
+    msgEl.textContent = 'Error: No se encontraron datos del pedido. Es posible que el pago se haya procesado correctamente. Contacta con el administrador.';
+    document.getElementById('payment-error-actions').style.display = 'block';
+    document.getElementById('payment-spinner').style.display = 'none';
+    return;
+  }
+
+  try {
+    const result = await apiPost({
+      action: 'verifyRedsysPayment',
+      Ds_MerchantParameters: dsParams,
+      Ds_Signature: dsSignature,
+      orderId: pending.orderId,
+      plate: pending.plate
+    });
+
+    // Clean URL parameters
+    window.history.replaceState({}, '', window.location.pathname);
+
+    if (result.error || !result.success) {
+      msgEl.textContent = 'Pago no completado: ' + (result.error || 'Error desconocido');
+      document.getElementById('payment-error-actions').style.display = 'block';
+      document.getElementById('payment-spinner').style.display = 'none';
+      sessionStorage.removeItem('cp_pending_order');
+      return;
+    }
+
+    // Payment verified — update user and show QR
+    await DB.updateUser(pending.plate, { status: 'out', paidAt: nowStr() });
+    sessionStorage.removeItem('cp_pending_order');
+    _usersCache = null; // Force fresh data
+
+    const user = await DB.getUserByPlate(pending.plate);
+    if (user) {
+      showPage('register');
+      showQR(user);
+      toast('Pago confirmado. Tu QR de acceso está listo.', 'success');
+      // Send QR by email via backend (Resend)
+      setTimeout(() => sendQREmail(user), 1500);
+    } else {
+      msgEl.textContent = 'Pago procesado pero no se encontró el usuario. Contacta con el administrador.';
+      document.getElementById('payment-error-actions').style.display = 'block';
+      document.getElementById('payment-spinner').style.display = 'none';
+    }
+  } catch (err) {
+    console.error('Payment verification error:', err);
+    msgEl.textContent = 'Error al verificar el pago. Contacta con el administrador.';
+    document.getElementById('payment-error-actions').style.display = 'block';
+    document.getElementById('payment-spinner').style.display = 'none';
+    window.history.replaceState({}, '', window.location.pathname);
+  }
+}
+
+async function sendQREmail(user) {
+  try {
+    const result = await apiPost({
+      action: 'sendQREmail',
+      plate: user.plate,
+      email: user.email,
+      nombre: user.nombre,
+      apellidos: user.apellidos,
+      zona: user.zona
+    });
+    if (result.error) {
+      console.warn('Email send error:', result.error);
+      toast('QR listo. No se pudo enviar el email.', 'warn');
+    } else {
+      toast('QR enviado a ' + user.email, 'success');
+    }
+  } catch (err) {
+    console.error('sendQREmail error:', err);
+    toast('QR listo. No se pudo enviar el email. Descarga el PDF.', 'warn');
+  }
 }
 
 // ════════════════════════════════════════════════════════
@@ -1960,6 +2150,10 @@ function toast(msg, type='success') {
 
 // ── Restaurar sesión admin tras refresh ──
 window.addEventListener('DOMContentLoaded', () => {
+  // Check if returning from Redsys payment
+  checkPaymentReturn();
+
+  // Restore admin session
   const saved = sessionStorage.getItem('cp_session');
   if (saved) {
     AppState.adminLoggedIn = true;
