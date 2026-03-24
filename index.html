@@ -679,13 +679,13 @@
     <div class="zona-selector" id="zona-selector">
       <div class="zona-title">¿A qué zona perteneces?</div>
       <div class="zona-btns">
-        <button class="zona-btn" id="zona-poli" onclick="setZona('Polideportivo')">
-          <span class="zona-icon">🏟</span>
-          <span class="zona-name">Polideportivo</span>
+        <button class="zona-btn" id="zona-poli" onclick="setZona('Parking VIP')">
+          <span class="zona-icon">🚗</span>
+          <span class="zona-name">Parking VIP</span>
         </button>
-        <button class="zona-btn" id="zona-feria" onclick="setZona('Vecinos Av. de la Feria')">
-          <span class="zona-icon">🏘</span>
-          <span class="zona-name">Vecinos Av. de la Feria</span>
+        <button class="zona-btn" id="zona-feria" onclick="setZona('Parking Autocaravanas')">
+          <span class="zona-icon">🚐</span>
+          <span class="zona-name">Parking Autocaravanas</span>
         </button>
       </div>
     </div>
@@ -786,13 +786,13 @@
     <div class="zona-selector" style="margin-bottom:12px">
       <div class="zona-title">Zona de escaneo</div>
       <div class="zona-btns">
-        <button class="zona-btn" id="scan-zona-poli" onclick="setScanZona('Polideportivo')">
-          <span class="zona-icon">🏟</span>
-          <span class="zona-name">Polideportivo</span>
+        <button class="zona-btn" id="scan-zona-poli" onclick="setScanZona('Parking VIP')">
+          <span class="zona-icon">🚗</span>
+          <span class="zona-name">Parking VIP</span>
         </button>
-        <button class="zona-btn" id="scan-zona-feria" onclick="setScanZona('Vecinos Av. de la Feria')">
-          <span class="zona-icon">🏘</span>
-          <span class="zona-name">Vecinos Av. de la Feria</span>
+        <button class="zona-btn" id="scan-zona-feria" onclick="setScanZona('Parking Autocaravanas')">
+          <span class="zona-icon">🚐</span>
+          <span class="zona-name">Parking Autocaravanas</span>
         </button>
       </div>
     </div>
@@ -1041,8 +1041,8 @@ window._scanZona = null;
 
 function setZona(zona) {
   window._selectedZona = zona;
-  document.getElementById('zona-poli').classList.toggle('active', zona === 'Polideportivo');
-  document.getElementById('zona-feria').classList.toggle('active', zona === 'Vecinos Av. de la Feria');
+  document.getElementById('zona-poli').classList.toggle('active', zona === 'Parking VIP');
+  document.getElementById('zona-feria').classList.toggle('active', zona === 'Parking Autocaravanas');
   const badge = document.getElementById('zona-badge');
   badge.textContent = '📍 Zona: ' + zona;
   document.getElementById('form-body').style.display = 'block';
@@ -1051,8 +1051,8 @@ function setZona(zona) {
 
 function setScanZona(zona) {
   window._scanZona = zona;
-  document.getElementById('scan-zona-poli').classList.toggle('active', zona === 'Polideportivo');
-  document.getElementById('scan-zona-feria').classList.toggle('active', zona === 'Vecinos Av. de la Feria');
+  document.getElementById('scan-zona-poli').classList.toggle('active', zona === 'Parking VIP');
+  document.getElementById('scan-zona-feria').classList.toggle('active', zona === 'Parking Autocaravanas');
   // Reset scan result
   document.getElementById('scan-result-area').innerHTML = '';
   lastScanPlate = null;
@@ -1137,11 +1137,21 @@ async function registerUser() {
   const zona      = window._selectedZona || '';
 
   if (!zona) { toast('Por favor selecciona una zona primero', 'error'); _isRegistering = false; return; }
-  if (!nombre||!apellidos||!nacimiento||!dni||!email||!telefono||!marca||!modelo||!plate) {
-    toast('Por favor rellena todos los campos', 'error'); _isRegistering = false; return;
+  if (!plate) {
+    toast('La matrícula es obligatoria', 'error'); _isRegistering = false; return;
   }
   if (!/^[A-Z0-9]{5,9}$/.test(plate)) {
     toast('Formato de matrícula no válido', 'error'); _isRegistering = false; return;
+  }
+  // Validaciones opcionales: solo se comprueban si el campo está relleno
+  if (dni && !/^[0-9]{8}[A-Za-z]$|^[XYZxyz][0-9]{7}[A-Za-z]$/i.test(dni)) {
+    toast('Formato de DNI/NIE no válido', 'error'); _isRegistering = false; return;
+  }
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    toast('Formato de email no válido', 'error'); _isRegistering = false; return;
+  }
+  if (telefono && !/^[+0-9\s]{9,15}$/.test(telefono)) {
+    toast('Formato de teléfono no válido', 'error'); _isRegistering = false; return;
   }
 
   // ── BIRTH YEAR CHECK — no se permiten nacidos en 2009 o posterior ──
@@ -1165,15 +1175,17 @@ async function registerUser() {
   // Force fresh data from Sheets before duplicate checks
   _usersCache = null;
 
-  // Check DNI first — nobody can have two QRs
-  const existingDni = await DB.getUserByDni(dni);
-  if (existingDni) {
-    btn.disabled = false;
-    loadingEl.classList.remove('active');
-    _isRegistering = false;
-    toast(`⛔ Este DNI ya está registrado (${existingDni.plate})`, 'error');
-    showDniBlockedMsg(existingDni);
-    return;
+  // Check DNI first — nobody can have two QRs (only if DNI provided)
+  if (dni) {
+    const existingDni = await DB.getUserByDni(dni);
+    if (existingDni) {
+      btn.disabled = false;
+      loadingEl.classList.remove('active');
+      _isRegistering = false;
+      toast(`⛔ Este DNI ya está registrado (${existingDni.plate})`, 'error');
+      showDniBlockedMsg(existingDni);
+      return;
+    }
   }
 
   // Check plate duplicate
@@ -1322,9 +1334,14 @@ function downloadQRpdf() {
 //  SCANNER
 // ════════════════════════════════════════════════════════
 let scanStream = null;
-let scanInterval = null;
 let lastScanPlate = null;
 let scanMode = 'entry'; // 'entry' | 'exit'
+let _scanCtx = null;      // cached canvas 2d context
+let _scanRunning = false;  // rAF loop control
+let _scanLastTime = 0;     // throttle timestamp
+const SCAN_INTERVAL_MS = 150;   // ~7 fps scan rate
+const SCAN_DEBOUNCE_MS = 2500;  // debounce same plate
+const SCAN_MAX_W = 640;         // max width for QR detection
 
 function setMode(mode) {
   scanMode = mode;
@@ -1351,7 +1368,9 @@ function setMode(mode) {
 
 async function startScanner() {
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment', width: { ideal: 640 }, height: { ideal: 480 } }
+    });
     scanStream = stream;
     const video = document.getElementById('cam-video');
     video.srcObject = stream;
@@ -1360,7 +1379,11 @@ async function startScanner() {
     document.getElementById('btn-start-cam').style.display = 'none';
     document.getElementById('btn-stop-cam').style.display = 'inline-block';
     lastScanPlate = null;
-    scanInterval = setInterval(scanFrame, 350);
+    // Cache canvas context for scanFrame performance
+    _scanCtx = document.getElementById('cam-canvas').getContext('2d', { willReadFrequently: true });
+    _scanRunning = true;
+    _scanLastTime = 0;
+    requestAnimationFrame(scanLoop);
     toast('Cámara activa — modo ' + (scanMode === 'entry' ? 'ENTRADA' : 'SALIDA'), 'success');
   } catch(e) {
     if (e.name === 'NotAllowedError') {
@@ -1371,9 +1394,18 @@ async function startScanner() {
   }
 }
 
+function scanLoop(ts) {
+  if (!_scanRunning) return;
+  if (ts - _scanLastTime >= SCAN_INTERVAL_MS) {
+    _scanLastTime = ts;
+    scanFrame();
+  }
+  requestAnimationFrame(scanLoop);
+}
+
 function stopScanner() {
+  _scanRunning = false;
   if (scanStream) { scanStream.getTracks().forEach(t => t.stop()); scanStream = null; }
-  clearInterval(scanInterval);
   document.getElementById('scanner-placeholder').style.display = 'flex';
   document.getElementById('scan-overlay').style.display = 'none';
   document.getElementById('btn-start-cam').style.display = 'block';
@@ -1385,12 +1417,22 @@ async function scanFrame() {
   const video  = document.getElementById('cam-video');
   const canvas = document.getElementById('cam-canvas');
   if (!video.videoWidth) return;
-  canvas.width  = video.videoWidth;
-  canvas.height = video.videoHeight;
-  const ctx = canvas.getContext('2d');
-  ctx.drawImage(video, 0, 0);
-  const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  const code = jsQR(img.data, img.width, img.height);
+
+  // Scale down for faster jsQR processing
+  let w = video.videoWidth, h = video.videoHeight;
+  if (w > SCAN_MAX_W) {
+    const scale = SCAN_MAX_W / w;
+    w = SCAN_MAX_W;
+    h = Math.round(h * scale);
+  }
+  if (canvas.width !== w || canvas.height !== h) {
+    canvas.width = w;
+    canvas.height = h;
+  }
+
+  _scanCtx.drawImage(video, 0, 0, w, h);
+  const img = _scanCtx.getImageData(0, 0, w, h);
+  const code = jsQR(img.data, w, h, { inversionAttempts: 'dontInvert' });
   if (code) {
     let parsed;
     try { parsed = JSON.parse(code.data); } catch { flashScannerBorder('invalid'); return; }
@@ -1399,7 +1441,7 @@ async function scanFrame() {
     lastScanPlate = parsed.plate;
     if (scanMode === 'entry') await processEntry(parsed.plate);
     else await processExit(parsed.plate);
-    setTimeout(() => { lastScanPlate = null; }, 4000);
+    setTimeout(() => { lastScanPlate = null; }, SCAN_DEBOUNCE_MS);
   }
 }
 
