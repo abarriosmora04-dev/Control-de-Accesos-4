@@ -914,8 +914,8 @@ const API_URL = 'https://script.google.com/macros/s/AKfycbw_3iXG9z1tCFZ9sRFSC6rw
 
 // ── Configuración ──
 const CONFIG = {
-  SCAN_DEBOUNCE_MS: 4000,
-  SCAN_INTERVAL_MS: 350,
+  SCAN_DEBOUNCE_MS: 2500,
+  SCAN_INTERVAL_MS: 150,
   TOAST_DURATION_MS: 3200,
   QR_RENDER_WAIT_MS: 900,
   SCANNER_BORDER_FLASH_MS: 2500,
@@ -1412,9 +1412,12 @@ function downloadQRpdf() {
 //  SCANNER
 // ════════════════════════════════════════════════════════
 let scanStream = null;
-let scanInterval = null;
 let lastScanPlate = null;
 let scanMode = 'entry'; // 'entry' | 'exit'
+let _scanCtx = null;      // cached canvas 2d context
+let _scanRunning = false;  // rAF loop control
+let _scanLastTime = 0;     // throttle timestamp
+const SCAN_MAX_W = 640;    // max width for QR detection (performance)
 
 function setMode(mode) {
   scanMode = mode;
@@ -1441,7 +1444,9 @@ function setMode(mode) {
 
 async function startScanner() {
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment', width: { ideal: 640 }, height: { ideal: 480 } }
+    });
     scanStream = stream;
     const video = document.getElementById('cam-video');
     video.srcObject = stream;
@@ -1450,7 +1455,11 @@ async function startScanner() {
     document.getElementById('btn-start-cam').style.display = 'none';
     document.getElementById('btn-stop-cam').style.display = 'inline-block';
     lastScanPlate = null;
-    scanInterval = setInterval(scanFrame, CONFIG.SCAN_INTERVAL_MS);
+    // Cache canvas context for scanFrame performance
+    _scanCtx = document.getElementById('cam-canvas').getContext('2d', { willReadFrequently: true });
+    _scanRunning = true;
+    _scanLastTime = 0;
+    requestAnimationFrame(scanLoop);
     toast('Cámara activa — modo ' + (scanMode === 'entry' ? 'ENTRADA' : 'SALIDA'), 'success');
   } catch(e) {
     toast('No se pudo acceder a la cámara', 'error');
@@ -1458,8 +1467,8 @@ async function startScanner() {
 }
 
 function stopScanner() {
+  _scanRunning = false;
   if (scanStream) { scanStream.getTracks().forEach(t => t.stop()); scanStream = null; }
-  clearInterval(scanInterval);
   document.getElementById('scanner-placeholder').style.display = 'flex';
   document.getElementById('scan-overlay').style.display = 'none';
   document.getElementById('btn-start-cam').style.display = 'block';
@@ -1467,16 +1476,33 @@ function stopScanner() {
   document.getElementById('cam-video').srcObject = null;
 }
 
+// rAF-based scan loop — throttled by SCAN_INTERVAL_MS
+function scanLoop(timestamp) {
+  if (!_scanRunning) return;
+  if (timestamp - _scanLastTime >= CONFIG.SCAN_INTERVAL_MS) {
+    _scanLastTime = timestamp;
+    scanFrame();
+  }
+  requestAnimationFrame(scanLoop);
+}
+
 async function scanFrame() {
-  const video  = document.getElementById('cam-video');
-  const canvas = document.getElementById('cam-canvas');
+  const video = document.getElementById('cam-video');
   if (!video.videoWidth) return;
-  canvas.width  = video.videoWidth;
-  canvas.height = video.videoHeight;
-  const ctx = canvas.getContext('2d');
-  ctx.drawImage(video, 0, 0);
-  const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  const code = jsQR(img.data, img.width, img.height);
+
+  const canvas = document.getElementById('cam-canvas');
+  // Scale down to max SCAN_MAX_W for faster QR detection
+  const scale = Math.min(1, SCAN_MAX_W / video.videoWidth);
+  const w = Math.round(video.videoWidth * scale);
+  const h = Math.round(video.videoHeight * scale);
+  if (canvas.width !== w || canvas.height !== h) {
+    canvas.width = w;
+    canvas.height = h;
+  }
+
+  _scanCtx.drawImage(video, 0, 0, w, h);
+  const img = _scanCtx.getImageData(0, 0, w, h);
+  const code = jsQR(img.data, w, h, { inversionAttempts: 'dontInvert' });
   if (code) {
     let parsed;
     try { parsed = JSON.parse(code.data); } catch { return; }
