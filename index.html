@@ -1028,12 +1028,12 @@ const DB = {
 
   async getUserByPlate(plate) {
     const users = await DB.getUsers();
-    return users.find(u => String(u.plate).toUpperCase() === plate.toUpperCase()) || null;
+    return users.find(u => u.plate && String(u.plate).toUpperCase() === plate.toUpperCase()) || null;
   },
 
   async getUserByDni(dni) {
     const users = await DB.getUsers();
-    return users.find(u => String(u.dni).toUpperCase().trim() === dni.toUpperCase().trim()) || null;
+    return users.find(u => u.dni && String(u.dni).toUpperCase().trim() === dni.toUpperCase().trim()) || null;
   },
 
   // ── WRITE ──
@@ -1350,7 +1350,7 @@ function showQR(user) {
 
 function downloadQRpdf() {
   const user = window._currentQRUser;
-  if (!user) return;
+  if (!user) { toast('Genera un QR primero', 'error'); return; }
 
   const qrContainer = document.getElementById('qr-output');
   const canvas = qrContainer.querySelector('canvas');
@@ -1462,7 +1462,11 @@ async function startScanner() {
     requestAnimationFrame(scanLoop);
     toast('Cámara activa — modo ' + (scanMode === 'entry' ? 'ENTRADA' : 'SALIDA'), 'success');
   } catch(e) {
-    toast('No se pudo acceder a la cámara', 'error');
+    if (e.name === 'NotAllowedError') {
+      toast('Permiso de cámara denegado — actívalo en Ajustes', 'error');
+    } else {
+      toast('No se pudo acceder a la cámara', 'error');
+    }
   }
 }
 
@@ -1505,8 +1509,8 @@ async function scanFrame() {
   const code = jsQR(img.data, w, h, { inversionAttempts: 'dontInvert' });
   if (code) {
     let parsed;
-    try { parsed = JSON.parse(code.data); } catch { return; }
-    if (!parsed.plate) return;
+    try { parsed = JSON.parse(code.data); } catch { flashScannerBorder('invalid'); return; }
+    if (!parsed.plate) { flashScannerBorder('invalid'); return; }
     if (parsed.plate === lastScanPlate) return; // debounce
     lastScanPlate = parsed.plate;
     if (scanMode === 'entry') await processEntry(parsed.plate);
