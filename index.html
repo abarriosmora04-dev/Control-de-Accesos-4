@@ -82,6 +82,7 @@
   header {
     display: flex; align-items: center; justify-content: space-between;
     padding: 16px 36px;
+    padding-top: calc(16px + env(safe-area-inset-top, 0px));
     border-bottom: 1px solid var(--border);
     background: rgba(8,8,7,0.9);
     backdrop-filter: blur(24px) saturate(1.2);
