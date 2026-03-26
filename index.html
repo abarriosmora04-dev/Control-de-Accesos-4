@@ -81,13 +81,12 @@
   /* ── HEADER ── */
   header {
     display: flex; align-items: center; justify-content: space-between;
-    padding: 16px 36px;
-    padding-top: max(44px, calc(16px + env(safe-area-inset-top, 28px)));
+    padding: 16px 20px;
     border-bottom: 1px solid var(--border);
-    background: rgba(8,8,7,0.9);
+    background: rgba(8,8,7,0.98);
     backdrop-filter: blur(24px) saturate(1.2);
     -webkit-backdrop-filter: blur(24px) saturate(1.2);
-    position: sticky; top: 0; z-index: 100;
+    position: relative; z-index: 100;
   }
 
   .logo {
