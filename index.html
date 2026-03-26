@@ -82,6 +82,7 @@
   header {
     display: flex; align-items: center; justify-content: space-between;
     padding: 16px 36px;
+    padding-top: calc(16px + env(safe-area-inset-top, 0px));
     border-bottom: 1px solid var(--border);
     background: rgba(8,8,7,0.9);
     backdrop-filter: blur(24px) saturate(1.2);
@@ -880,8 +881,8 @@
       <input class="filter-input" id="filter-search" placeholder="Buscar por nombre, matrícula, DNI..." oninput="renderAdmin()">
       <select class="filter-select" id="filter-zona" onchange="renderAdmin()">
         <option value="all">Todas las zonas</option>
-        <option value="Polideportivo">Polideportivo</option>
-        <option value="Vecinos Av. de la Feria">Av. de la Feria</option>
+        <option value="Parking VIP">Parking VIP</option>
+        <option value="Parking Autocaravanas">Parking Autocaravanas</option>
       </select>
       <select class="filter-select" id="filter-status" onchange="renderAdmin()">
         <option value="all">Todos</option>
