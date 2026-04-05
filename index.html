@@ -659,26 +659,22 @@
     <div class="logo" style="gap:14px">
       <svg class="logo-img" viewBox="0 0 192 192" xmlns="http://www.w3.org/2000/svg" style="border-radius:7px">
         <rect width="192" height="192" rx="32" fill="#6085F6"/>
-        <!-- Parking marker pin -->
-        <g transform="translate(96,52)" fill="none" stroke="#fff" stroke-width="8" stroke-linecap="round" stroke-linejoin="round">
-          <!-- Pin outline -->
-          <path d="M0,0 C22,0 40,18 40,40 C40,55 28,72 0,95 C-28,72 -40,55 -40,40 C-40,18 -22,0 0,0 Z" fill="none"/>
-          <!-- Letter P -->
-          <text x="0" y="50" text-anchor="middle" font-family="Arial,sans-serif" font-weight="700" font-size="36" fill="#fff" stroke="none">P</text>
+        <!-- Pin marker -->
+        <path d="M120,58 A36,36 0 1,0 96,95 A36,36 0 0,0 132,58 Z" fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M96,95 L96,95" fill="none" stroke="#fff" stroke-width="7"/>
+        <circle cx="110" cy="55" r="24" fill="none" stroke="#fff" stroke-width="7"/>
+        <text x="110" y="63" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-weight="700" font-size="28" fill="#fff">P</text>
+        <!-- Car -->
+        <g transform="translate(78,72)" fill="none" stroke="#fff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4,18 L10,4 L38,4 L44,18"/>
+          <rect x="-2" y="18" width="52" height="18" rx="3"/>
+          <circle cx="13" cy="36" r="5" fill="#fff"/>
+          <circle cx="35" cy="36" r="5" fill="#fff"/>
+          <line x1="-2" y1="25" x2="6" y2="25"/>
+          <line x1="42" y1="25" x2="50" y2="25"/>
         </g>
-        <!-- Car body -->
-        <g transform="translate(96,120)" fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round">
-          <!-- Car roof -->
-          <path d="M-28,0 L-18,-20 L18,-20 L28,0" fill="none"/>
-          <!-- Car body -->
-          <rect x="-36" y="0" width="72" height="24" rx="4" fill="none"/>
-          <!-- Wheels -->
-          <circle cx="-22" cy="24" r="7" fill="#fff"/>
-          <circle cx="22" cy="24" r="7" fill="#fff"/>
-          <!-- Headlights -->
-          <line x1="-36" y1="8" x2="-30" y2="8"/>
-          <line x1="30" y1="8" x2="36" y2="8"/>
-        </g>
+        <!-- Text -->
+        <text x="96" y="145" text-anchor="middle" font-family="'Nunito',Arial,Helvetica,sans-serif" font-weight="800" font-size="22" fill="#fff" letter-spacing="0.5">controlpark</text>
       </svg>
       Control<span>Park</span>
     </div>
@@ -702,13 +698,13 @@
     <div class="zona-selector" id="zona-selector">
       <div class="zona-title">¿A qué zona perteneces?</div>
       <div class="zona-btns">
-        <button class="zona-btn" id="zona-poli" onclick="setZona('Parking VIP')">
-          <span class="zona-icon">🚗</span>
-          <span class="zona-name">Parking VIP</span>
+        <button class="zona-btn" id="zona-poli" onclick="setZona('Polideportivo')">
+          <span class="zona-icon">🏟</span>
+          <span class="zona-name">Polideportivo</span>
         </button>
-        <button class="zona-btn" id="zona-feria" onclick="setZona('Parking Autocaravanas')">
-          <span class="zona-icon">🚐</span>
-          <span class="zona-name">Parking Autocaravanas</span>
+        <button class="zona-btn" id="zona-feria" onclick="setZona('Av. de la Feria')">
+          <span class="zona-icon">🏘</span>
+          <span class="zona-name">Av. de la Feria</span>
         </button>
       </div>
     </div>
@@ -809,13 +805,13 @@
     <div class="zona-selector" style="margin-bottom:12px">
       <div class="zona-title">Zona de escaneo</div>
       <div class="zona-btns">
-        <button class="zona-btn" id="scan-zona-poli" onclick="setScanZona('Parking VIP')">
-          <span class="zona-icon">🚗</span>
-          <span class="zona-name">Parking VIP</span>
+        <button class="zona-btn" id="scan-zona-poli" onclick="setScanZona('Polideportivo')">
+          <span class="zona-icon">🏟</span>
+          <span class="zona-name">Polideportivo</span>
         </button>
-        <button class="zona-btn" id="scan-zona-feria" onclick="setScanZona('Parking Autocaravanas')">
-          <span class="zona-icon">🚐</span>
-          <span class="zona-name">Parking Autocaravanas</span>
+        <button class="zona-btn" id="scan-zona-feria" onclick="setScanZona('Av. de la Feria')">
+          <span class="zona-icon">🏘</span>
+          <span class="zona-name">Av. de la Feria</span>
         </button>
       </div>
     </div>
@@ -903,8 +899,8 @@
       <input class="filter-input" id="filter-search" placeholder="Buscar por nombre, matrícula, DNI..." oninput="renderAdmin()">
       <select class="filter-select" id="filter-zona" onchange="renderAdmin()">
         <option value="all">Todas las zonas</option>
-        <option value="Parking VIP">Parking VIP</option>
-        <option value="Parking Autocaravanas">Parking Autocaravanas</option>
+        <option value="Polideportivo">Polideportivo</option>
+        <option value="Av. de la Feria">Av. de la Feria</option>
       </select>
       <select class="filter-select" id="filter-status" onchange="renderAdmin()">
         <option value="all">Todos</option>
@@ -1064,8 +1060,8 @@ window._scanZona = null;
 
 function setZona(zona) {
   window._selectedZona = zona;
-  document.getElementById('zona-poli').classList.toggle('active', zona === 'Parking VIP');
-  document.getElementById('zona-feria').classList.toggle('active', zona === 'Parking Autocaravanas');
+  document.getElementById('zona-poli').classList.toggle('active', zona === 'Polideportivo');
+  document.getElementById('zona-feria').classList.toggle('active', zona === 'Av. de la Feria');
   const badge = document.getElementById('zona-badge');
   badge.textContent = '📍 Zona: ' + zona;
   document.getElementById('form-body').style.display = 'block';
@@ -1074,8 +1070,8 @@ function setZona(zona) {
 
 function setScanZona(zona) {
   window._scanZona = zona;
-  document.getElementById('scan-zona-poli').classList.toggle('active', zona === 'Parking VIP');
-  document.getElementById('scan-zona-feria').classList.toggle('active', zona === 'Parking Autocaravanas');
+  document.getElementById('scan-zona-poli').classList.toggle('active', zona === 'Polideportivo');
+  document.getElementById('scan-zona-feria').classList.toggle('active', zona === 'Av. de la Feria');
   // Reset scan result
   document.getElementById('scan-result-area').innerHTML = '';
   lastScanPlate = null;
