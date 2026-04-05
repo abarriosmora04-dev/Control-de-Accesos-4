@@ -10,7 +10,7 @@
 <meta name="theme-color" content="#4f84f7">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="apple-mobile-web-app-title" content="ControlPark">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <meta name="description" content="Sistema de control de accesos y gestión de parking">
@@ -81,7 +81,8 @@
   /* ── HEADER ── */
   header {
     display: flex; align-items: center; justify-content: space-between;
-    padding: 60px 20px 16px 20px;
+    padding: 16px 20px;
+    padding-top: calc(60px + env(safe-area-inset-top, 0px));
     border-bottom: 1px solid var(--border);
     background: rgba(8,8,7,0.98);
     backdrop-filter: blur(24px) saturate(1.2);
@@ -656,7 +657,29 @@
   <!-- HEADER -->
   <header>
     <div class="logo" style="gap:14px">
-      <img src="icons/icon-192.png" alt="ControlPark" class="logo-img">
+      <svg class="logo-img" viewBox="0 0 192 192" xmlns="http://www.w3.org/2000/svg" style="border-radius:7px">
+        <rect width="192" height="192" rx="32" fill="#6085F6"/>
+        <!-- Parking marker pin -->
+        <g transform="translate(96,52)" fill="none" stroke="#fff" stroke-width="8" stroke-linecap="round" stroke-linejoin="round">
+          <!-- Pin outline -->
+          <path d="M0,0 C22,0 40,18 40,40 C40,55 28,72 0,95 C-28,72 -40,55 -40,40 C-40,18 -22,0 0,0 Z" fill="none"/>
+          <!-- Letter P -->
+          <text x="0" y="50" text-anchor="middle" font-family="Arial,sans-serif" font-weight="700" font-size="36" fill="#fff" stroke="none">P</text>
+        </g>
+        <!-- Car body -->
+        <g transform="translate(96,120)" fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round">
+          <!-- Car roof -->
+          <path d="M-28,0 L-18,-20 L18,-20 L28,0" fill="none"/>
+          <!-- Car body -->
+          <rect x="-36" y="0" width="72" height="24" rx="4" fill="none"/>
+          <!-- Wheels -->
+          <circle cx="-22" cy="24" r="7" fill="#fff"/>
+          <circle cx="22" cy="24" r="7" fill="#fff"/>
+          <!-- Headlights -->
+          <line x1="-36" y1="8" x2="-30" y2="8"/>
+          <line x1="30" y1="8" x2="36" y2="8"/>
+        </g>
+      </svg>
       Control<span>Park</span>
     </div>
     <div style="display:flex;gap:8px;align-items:center">
