@@ -41,7 +41,7 @@ const CONFIG = {
   privacyContact: 'info@controlpark.es',
   // Borrado único: si cambias este valor, en el siguiente despliegue se vacían todos los datos
   // (registros, movimientos y hojas antiguas de la app). Déjalo vacío para no borrar nada.
-  resetId: '2026-11-08-todo',
+  resetId: '',
 };
 
 const VERSION = 3;
