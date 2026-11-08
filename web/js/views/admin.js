@@ -4,7 +4,7 @@ import { plate, toast, icon, openDialog, closeDialog, confirmDialog, setBusy } f
 import { qrSvg, qrPayload } from '../qr.js';
 import { downloadPassPdf } from '../pdf.js';
 
-const ACTION_LABEL = { entry: 'Entrada', exit: 'Salida', manual_exit: 'Salida manual', revoke: 'QR renovado', delete: 'Datos borrados' };
+const ACTION_LABEL = { entry: 'Entrada', exit: 'Salida', manual_exit: 'Salida manual', revoke: 'QR renovado', delete: 'Datos borrados', reset: 'Datos vaciados' };
 const RESULT_LABEL = { ok: '', already_in: 'ya estaba dentro', not_in: 'no constaba la entrada', wrong_zone: 'zona equivocada', not_found: 'pase no válido', full: 'zona completa' };
 
 export async function mount(root) {
@@ -54,6 +54,12 @@ export async function mount(root) {
         <label class="check check--inline"><input type="checkbox" id="issues"> Solo incidencias</label>
       </div>
       <ol id="log" class="log"></ol>
+    </div>
+
+    <div class="panel panel--danger">
+      <h2 class="panel__title">Nuevo evento</h2>
+      <p class="panel__text">Vacía todos los vehículos registrados, los movimientos y las hojas antiguas para empezar de cero. Los pases actuales dejarán de funcionar.</p>
+      <button class="btn btn--danger-ghost" id="reset" type="button">Vaciar todos los datos</button>
     </div>
   </section>`;
 
@@ -263,7 +269,40 @@ export async function mount(root) {
     setBusy(btn, false);
   }
 
+  function resetAll() {
+    openDialog(html`
+      <h2 class="dialog__title">Vaciar todos los datos</h2>
+      <p class="dialog__text">Se borrarán ${data ? data.users.length : 'todos los'} vehículos registrados y todo el historial de movimientos. No se puede deshacer desde la app. Escribe BORRAR para confirmar.</p>
+      <form id="reset-form" novalidate>
+        <input class="input" id="reset-word" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-label="Escribe BORRAR">
+        <p class="field__error" id="reset-error" aria-live="polite"></p>
+        <div class="dialog__actions">
+          <button type="button" class="btn btn--ghost" id="reset-cancel">Cancelar</button>
+          <button type="submit" class="btn btn--danger" id="reset-go">Vaciar datos</button>
+        </div>
+      </form>`);
+    $('#reset-word').focus();
+    $('#reset-cancel').onclick = closeDialog;
+    $('#reset-form').onsubmit = async e => {
+      e.preventDefault();
+      const word = $('#reset-word').value.trim().toUpperCase();
+      if (word !== 'BORRAR') { $('#reset-error').textContent = 'Escribe BORRAR para confirmar'; return; }
+      const btn = $('#reset-go');
+      setBusy(btn, true, 'Vaciando');
+      try {
+        const r = await api('resetData', { confirm: 'BORRAR' }, { timeout: 40000 });
+        closeDialog();
+        toast(`Datos vaciados: ${r.users} registros y ${r.logs} movimientos`, 'ok', 5000);
+        await load();
+      } catch (err) {
+        setBusy(btn, false);
+        $('#reset-error').textContent = err.message;
+      }
+    };
+  }
+
   // ── Eventos ──
+  $('#reset', root).onclick = resetAll;
   $('#reload', root).onclick = () => load(true);
   $('#csv-users', root).onclick = exportUsers;
   $('#csv-logs', root).onclick = exportLogs;

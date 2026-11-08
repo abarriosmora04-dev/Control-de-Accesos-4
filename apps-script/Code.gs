@@ -39,6 +39,9 @@ const CONFIG = {
   sessionHours: 14,
   timezone: 'Europe/Madrid',
   privacyContact: 'info@controlpark.es',
+  // Borrado único: si cambias este valor, en el siguiente despliegue se vacían todos los datos
+  // (registros, movimientos y hojas antiguas de la app). Déjalo vacío para no borrar nada.
+  resetId: '2026-11-08-todo',
 };
 
 const VERSION = 3;
@@ -96,6 +99,7 @@ const ACTIONS = {
   revoke: actionRevoke_,
   deleteUser: actionDeleteUser_,
   allLogs: actionAllLogs_,
+  resetData: actionResetData_,
 };
 
 // ════════════════════════════════════════════════════════════════
@@ -320,6 +324,43 @@ function actionDeleteUser_(p) {
   } finally {
     lock.releaseLock();
   }
+}
+
+function actionResetData_(p) {
+  const a = auth_(p, ['admin']);
+  if (p.confirm !== 'BORRAR') throw fail_('invalid', 'Escribe BORRAR para confirmar');
+  const lock = lock_();
+  try {
+    return resetAllData_(a.role);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** Vacía Usuarios y Movimientos y elimina las hojas antiguas de la app (no toca otras hojas). */
+function resetAllData_(role) {
+  const ss = ss_();
+  const users = usersSheet_();
+  const logs = logsSheet_();
+  const removedUsers = Math.max(0, users.getLastRow() - 1);
+  const removedLogs = Math.max(0, logs.getLastRow() - 1);
+  if (removedUsers) users.deleteRows(2, removedUsers);
+  if (removedLogs) logs.deleteRows(2, removedLogs);
+  const removedSheets = [];
+  ss.getSheets().forEach(sh => {
+    const name = sh.getName();
+    if (name === SHEET_USERS || name === SHEET_LOGS) return;
+    const header = sh.getLastRow() > 0
+      ? sh.getRange(1, 1, 1, Math.max(1, sh.getLastColumn())).getValues()[0].map(h => String(h).toLowerCase().trim())
+      : [];
+    const isAppData = /\(antigua\)$/.test(name) || header.indexOf('plate') >= 0 || header.indexOf('matricula') >= 0
+      || header.indexOf('matrícula') >= 0 || (header.indexOf('action') >= 0 && header.indexOf('ts') >= 0);
+    if (isAppData) { ss.deleteSheet(sh); removedSheets.push(name); }
+  });
+  const now = Date.now();
+  appendObj_(logs, LOG_COLS, logRow_({ ts: now, action: 'reset', result: 'ok', role: role,
+    detail: 'Datos vaciados: ' + removedUsers + ' registros, ' + removedLogs + ' movimientos, hojas antiguas: ' + (removedSheets.join(', ') || 'ninguna') }));
+  return { users: removedUsers, logs: removedLogs, sheets: removedSheets };
 }
 
 function actionAllLogs_(p) {
@@ -736,6 +777,21 @@ function fail_(code, message, extra) {
 /** Se ejecuta sola en la primera petición: crea las hojas nuevas y migra los datos antiguos. */
 function ensureInit_() {
   const props = PropertiesService.getScriptProperties();
+  if (CONFIG.resetId && props.getProperty('RESET_DONE') !== CONFIG.resetId) {
+    const lock = LockService.getScriptLock();
+    if (lock.tryLock(30000)) {
+      try {
+        if (props.getProperty('RESET_DONE') !== CONFIG.resetId) {
+          props.setProperty('INIT_V3', String(Date.now())); // no volver a migrar lo que se va a borrar
+          const r = resetAllData_('deploy');
+          props.setProperty('RESET_DONE', CONFIG.resetId);
+          console.log('Borrado único ' + CONFIG.resetId + ': ' + JSON.stringify(r));
+        }
+      } finally {
+        lock.releaseLock();
+      }
+    }
+  }
   if (props.getProperty('INIT_V3')) return;
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(30000)) return;

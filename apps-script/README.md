@@ -38,6 +38,8 @@ Están en `CONFIG`, al principio de `Code.gs`:
 
 **Retira los QR antiguos.** Cuando todos tengan el pase nuevo, pon `allowLegacyQr: false`. Los QR antiguos solo llevan la matrícula y cualquiera podría falsificarlos.
 
+**Vaciar los datos para un evento nuevo.** En el panel, «Vaciar todos los datos» (pide escribir BORRAR). También se puede desde aquí: cambia el valor de `resetId` en `CONFIG` y el siguiente despliegue lo vacía todo una sola vez. Solo se borran las hojas de la app; otras hojas que añadas a mano no se tocan.
+
 **Cerrar todas las sesiones abiertas.** Borra la propiedad del script `SESSION_SECRET`; se regenera sola.
 
 ## Acciones de la API

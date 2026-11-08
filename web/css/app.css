@@ -527,3 +527,5 @@ body[data-view="escaner"] .topbar { background: rgba(14, 17, 22, .92); }
   .ticket { box-shadow: none; }
 }
 .group > .field + .grid { margin-top: 16px; }
+.panel__text { color: var(--ink-2); margin-bottom: 14px; max-width: 60ch; }
+.panel--danger { border-color: color-mix(in srgb, var(--stop) 35%, var(--line)); }
