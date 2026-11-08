@@ -11,7 +11,8 @@
  *  - Protección contra inyección de fórmulas en Sheets, límites de peticiones y bloqueo por
  *    intentos fallidos de contraseña.
  *
- * Instalación: ver apps-script/README.md
+ * Se despliega solo desde GitHub (ver apps-script/README.md). En el primer uso crea las hojas
+ * nuevas y migra los datos antiguos automáticamente.
  */
 
 // ════════════════════════════════════════════════════════════════
@@ -33,7 +34,8 @@ const CONFIG = {
   requirePhone: false,
   enforceCapacity: false,   // true = denegar entradas cuando la zona está llena
   allowLegacyQr: true,      // aceptar los QR antiguos (solo matrícula). Desactívalo cuando todos tengan el pase nuevo
-  sendEmailOnRegister: false, // true = enviar email con el enlace al pase (usa la cuota de MailApp)
+  // Hoja de cálculo «Controlpark DB». Se usa si el script no está vinculado a una hoja.
+  spreadsheetId: '1QjV-MrrzcOy88XZZ10jeAGM7VeFVRBun7yxel5zt_3A',
   sessionHours: 14,
   timezone: 'Europe/Madrid',
   privacyContact: 'info@controlpark.es',
@@ -51,12 +53,14 @@ const LOG_COLS = ['ts', 'fecha', 'action', 'result', 'plate', 'userId', 'nombre'
 //  ENTRADA HTTP
 // ════════════════════════════════════════════════════════════════
 function doGet(e) {
+  try { ensureInit_(); } catch (err) { console.error('init: ' + (err && err.stack || err)); }
   const action = e && e.parameter && e.parameter.action;
   if (action === 'config') return json_({ ok: true, data: publicConfig_() });
   return json_({ ok: true, data: { service: 'ControlPark', version: VERSION } });
 }
 
 function doPost(e) {
+  try { ensureInit_(); } catch (err) { console.error('init: ' + (err && err.stack || err)); }
   let body;
   try {
     body = JSON.parse((e && e.postData && e.postData.contents) || '{}');
@@ -132,7 +136,6 @@ function actionRegister_(p) {
       registeredAt: now, consentAt: now, updatedAt: now,
     });
     appendObj_(sh, USER_COLS, u);
-    if (CONFIG.sendEmailOnRegister && u.email) sendPassEmail_(u);
     return publicPass_(u);
   } finally {
     lock.releaseLock();
@@ -166,8 +169,15 @@ function actionLogin_(p) {
   const pw = String(p.password || '');
   const props = PropertiesService.getScriptProperties();
   let role = null;
-  if (pw && safeEqual_(pw, props.getProperty('ADMIN_PASSWORD') || '')) role = 'admin';
-  else if (pw && safeEqual_(pw, props.getProperty('OPERATOR_PASSWORD') || '')) role = 'operator';
+  const auth = typeof AUTH !== 'undefined' ? AUTH : null; // generado por GitHub en Secrets.gs
+  if (pw && auth && auth.admin) {
+    const h = sha256_(auth.salt + pw);
+    if (safeEqual_(h, auth.admin)) role = 'admin';
+    else if (auth.operator && safeEqual_(h, auth.operator)) role = 'operator';
+  } else if (pw) {
+    if (safeEqual_(pw, props.getProperty('ADMIN_PASSWORD') || '')) role = 'admin';
+    else if (safeEqual_(pw, props.getProperty('OPERATOR_PASSWORD') || '')) role = 'operator';
+  }
   if (!role) {
     cache.put('login_fail', String(fails + 1), 600);
     throw fail_('bad_password', 'Contraseña incorrecta');
@@ -540,6 +550,11 @@ function safeEqual_(a, b) {
   return diff === 0;
 }
 
+function sha256_(text) {
+  const bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, text, Utilities.Charset.UTF_8);
+  return bytes.map(b => ('0' + ((b + 256) % 256).toString(16)).slice(-2)).join('');
+}
+
 function rateLimit_(key, max, seconds, message) {
   const cache = CacheService.getScriptCache();
   const bucket = 'rl_' + key + '_' + Math.floor(Date.now() / (seconds * 1000));
@@ -602,12 +617,21 @@ function logOut_(l) {
 // ════════════════════════════════════════════════════════════════
 function ss_() {
   const id = PropertiesService.getScriptProperties().getProperty('SPREADSHEET_ID');
-  return id ? SpreadsheetApp.openById(id) : SpreadsheetApp.getActiveSpreadsheet();
+  if (id) return SpreadsheetApp.openById(id);
+  return SpreadsheetApp.getActiveSpreadsheet() || SpreadsheetApp.openById(CONFIG.spreadsheetId);
 }
 
 function sheet_(name, cols) {
   const ss = ss_();
   let sh = ss.getSheetByName(name);
+  if (sh && sh.getLastRow() > 0) {
+    // Si ya existía una hoja con este nombre pero de la versión antigua, se aparta sin tocar sus datos
+    const header = sh.getRange(1, 1, 1, Math.max(1, sh.getLastColumn())).getValues()[0].map(String);
+    if (header.indexOf(cols[0]) !== 0 || header.indexOf(cols[1]) !== 1) {
+      sh.setName(name + ' (antigua)');
+      sh = null;
+    }
+  }
   if (!sh) {
     sh = ss.insertSheet(name);
     sh.getRange(1, 1, 1, cols.length).setValues([cols]).setFontWeight('bold');
@@ -705,30 +729,31 @@ function fail_(code, message, extra) {
   return { code: code, message: message, extra: extra };
 }
 
-function sendPassEmail_(u) {
-  try {
-    const link = CONFIG.appUrl + '#pase/' + u.token;
-    MailApp.sendEmail({
-      to: u.email,
-      subject: CONFIG.eventName + ' · Tu pase de aparcamiento ' + u.plate,
-      htmlBody: '<p>Hola ' + u.nombre + ',</p><p>Tu pase para la zona <b>' + zoneName_(u.zona) +
-        '</b> con la matrícula <b>' + u.plate + '</b> está listo.</p><p><a href="' + link +
-        '">Abrir mi pase</a></p><p>Enséñalo en la entrada y en la salida del aparcamiento.</p>',
-    });
-  } catch (e) {
-    console.warn('No se pudo enviar el email: ' + e);
-  }
-}
-
 // ════════════════════════════════════════════════════════════════
 //  UTILIDADES DE INSTALACIÓN (ejecutar desde el editor)
 // ════════════════════════════════════════════════════════════════
 
-/** Ejecuta una vez: crea las hojas, la clave de sesión y contraseñas si no existen. */
+/** Se ejecuta sola en la primera petición: crea las hojas nuevas y migra los datos antiguos. */
+function ensureInit_() {
+  const props = PropertiesService.getScriptProperties();
+  if (props.getProperty('INIT_V3')) return;
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(30000)) return;
+  try {
+    if (props.getProperty('INIT_V3')) return;
+    migrarDatosAntiguos();
+    props.setProperty('INIT_V3', String(Date.now()));
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** Crea las hojas y la clave de sesión. Solo genera contraseñas si no llegan desde GitHub. */
 function setup() {
   usersSheet_();
   logsSheet_();
   secret_();
+  if (typeof AUTH !== 'undefined' && AUTH.admin) return;
   const props = PropertiesService.getScriptProperties();
   const gen = () => Utilities.getUuid().replace(/-/g, '').slice(0, 10);
   if (!props.getProperty('ADMIN_PASSWORD')) props.setProperty('ADMIN_PASSWORD', gen());
@@ -743,7 +768,9 @@ function setup() {
  * No modifica ni borra las hojas antiguas. Se puede ejecutar varias veces sin duplicar datos.
  */
 function migrarDatosAntiguos() {
-  setup();
+  usersSheet_();
+  logsSheet_();
+  secret_();
   const ss = ss_();
   const usersSh = usersSheet_();
   const existing = readAll_(usersSh, USER_COLS);
