@@ -60,9 +60,19 @@ jobs:
         run: |
           set -euo pipefail
           CLASP="npx -y @google/clasp@2.4.2"
-          $CLASP push --force
+          # clasp a veces termina sin error aunque Google haya rechazado la subida: se comprueba la salida
+          PUSH=$($CLASP push --force 2>&1) || true
+          echo "$PUSH"
+          if ! echo "$PUSH" | grep -q "Pushed"; then
+            if echo "$PUSH" | grep -qiE "insufficient|403|permission"; then
+              echo "::error::Google ha rechazado la subida por falta de permisos. Repite «clasp login» marcando TODAS las casillas en la pantalla de Google y actualiza el secret CLASPRC_JSON."
+            else
+              echo "::error::No se pudo subir el código a Apps Script."
+            fi
+            exit 1
+          fi
           # Reutiliza la implementación de la URL actual para que no cambie
-          CURRENT=$(grep -oE 'macros/s/[A-Za-z0-9_-]+/exec' ../../js/config.js | cut -d/ -f3 || true)
+          CURRENT=$(grep -oE 'macros/s/[A-Za-z0-9_-]+/exec' ../../web/js/config.js | cut -d/ -f3 || true)
           LIST=$($CLASP deployments)
           echo "$LIST"
           if [ -n "$CURRENT" ] && echo "$LIST" | grep -q -- "$CURRENT"; then
