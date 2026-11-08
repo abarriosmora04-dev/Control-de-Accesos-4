@@ -56,14 +56,19 @@ const LOG_COLS = ['ts', 'fecha', 'action', 'result', 'plate', 'userId', 'nombre'
 //  ENTRADA HTTP
 // ════════════════════════════════════════════════════════════════
 function doGet(e) {
-  try { ensureInit_(); } catch (err) { console.error('init: ' + (err && err.stack || err)); }
+  try { ensureInit_(); } catch (err) { initError_(err); }
   const action = e && e.parameter && e.parameter.action;
+  if (action === 'health') {
+    const props = PropertiesService.getScriptProperties();
+    return json_({ ok: true, data: { version: VERSION, init: !!props.getProperty('INIT_V3'),
+      resetDone: props.getProperty('RESET_DONE') || '', lastError: props.getProperty('LAST_INIT_ERROR') || '' } });
+  }
   if (action === 'config') return json_({ ok: true, data: publicConfig_() });
   return json_({ ok: true, data: { service: 'ControlPark', version: VERSION } });
 }
 
 function doPost(e) {
-  try { ensureInit_(); } catch (err) { console.error('init: ' + (err && err.stack || err)); }
+  try { ensureInit_(); } catch (err) { initError_(err); }
   let body;
   try {
     body = JSON.parse((e && e.postData && e.postData.contents) || '{}');
@@ -773,6 +778,12 @@ function fail_(code, message, extra) {
 // ════════════════════════════════════════════════════════════════
 //  UTILIDADES DE INSTALACIÓN (ejecutar desde el editor)
 // ════════════════════════════════════════════════════════════════
+
+function initError_(err) {
+  const msg = String(err && err.message || err).slice(0, 300);
+  console.error('init: ' + (err && err.stack || err));
+  try { PropertiesService.getScriptProperties().setProperty('LAST_INIT_ERROR', new Date().toISOString() + ' ' + msg); } catch (e) { /* sin propiedades */ }
+}
 
 /** Se ejecuta sola en la primera petición: crea las hojas nuevas y migra los datos antiguos. */
 function ensureInit_() {
