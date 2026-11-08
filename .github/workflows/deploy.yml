@@ -1,5 +1,7 @@
-name: Deploy to GitHub Pages
+name: Desplegar
 
+# Cada cambio en main publica primero el servidor (Apps Script) y, solo si va bien, la web.
+# Así la web nueva nunca sale con un servidor antiguo.
 on:
   push:
     branches: [main]
@@ -11,27 +13,100 @@ permissions:
   id-token: write
 
 concurrency:
-  group: pages
+  group: deploy
   cancel-in-progress: false
 
 jobs:
-  deploy:
+  servidor:
+    name: Servidor (Apps Script)
+    runs-on: ubuntu-latest
+    outputs:
+      api_url: ${{ steps.deploy.outputs.api_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Comprobar credenciales
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+        run: |
+          if [ -z "$CLASPRC_JSON" ]; then
+            echo "::error::Falta el secret CLASPRC_JSON. Sigue los pasos de apps-script/README.md"
+            exit 1
+          fi
+          printf '%s' "$CLASPRC_JSON" > ~/.clasprc.json
+
+      - name: Preparar código
+        env:
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+          OPERATOR_PASSWORD: ${{ secrets.OPERATOR_PASSWORD }}
+        run: node scripts/build-apps-script.mjs build/apps-script
+
+      - name: Subir y publicar
+        id: deploy
+        working-directory: build/apps-script
+        run: |
+          set -euo pipefail
+          CLASP="npx -y @google/clasp@2.4.2"
+          $CLASP push --force
+          # Reutiliza la implementación de la URL actual para que no cambie
+          CURRENT=$(grep -oE 'macros/s/[A-Za-z0-9_-]+/exec' ../../js/config.js | cut -d/ -f3 || true)
+          LIST=$($CLASP deployments)
+          echo "$LIST"
+          if [ -n "$CURRENT" ] && echo "$LIST" | grep -q -- "$CURRENT"; then
+            ID="$CURRENT"
+          else
+            ID=$(echo "$LIST" | grep -v '@HEAD' | grep -oE 'AKfy[A-Za-z0-9_-]+' | tail -n 1 || true)
+          fi
+          if [ -n "$ID" ]; then
+            $CLASP deploy -i "$ID" -d "GitHub ${GITHUB_SHA::7}"
+          else
+            ID=$($CLASP deploy -d "GitHub ${GITHUB_SHA::7}" | grep -oE 'AKfy[A-Za-z0-9_-]+' | head -n 1)
+          fi
+          if [ -n "$CURRENT" ] && [ "$ID" != "$CURRENT" ]; then
+            echo "::warning::La URL del servidor ha cambiado. La antigua (${CURRENT}) sigue activa en otro proyecto: archívala en Apps Script > Implementar > Gestionar implementaciones."
+          fi
+          echo "api_url=https://script.google.com/macros/s/${ID}/exec" >> "$GITHUB_OUTPUT"
+
+      - name: Comprobar que responde
+        env:
+          API_URL: ${{ steps.deploy.outputs.api_url }}
+        run: |
+          for i in 1 2 3 4 5 6; do
+            BODY=$(curl -sL "$API_URL?action=config" || true)
+            if echo "$BODY" | grep -q '"version":3'; then echo "Servidor v3 en línea"; exit 0; fi
+            sleep 10
+          done
+          echo "::error::El servidor no responde con la versión 3. Respuesta: ${BODY:0:300}"
+          exit 1
+
+  web:
+    name: Web (GitHub Pages)
+    needs: servidor
+    runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Pages
-        uses: actions/configure-pages@v5
+      - name: Apuntar la web al servidor publicado
+        env:
+          API_URL: ${{ needs.servidor.outputs.api_url }}
+        run: |
+          sed -i -E "s#export const API_URL = '[^']*'#export const API_URL = '${API_URL}'#" js/config.js
+          grep API_URL js/config.js
+          rm -rf apps-script scripts .github
 
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
         with:
           path: '.'
 
-      - name: Deploy to GitHub Pages
+      - name: Publicar
         id: deployment
         uses: actions/deploy-pages@v4

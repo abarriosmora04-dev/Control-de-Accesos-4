@@ -1,36 +1,44 @@
-# Backend en Google Apps Script
+# Servidor (Google Apps Script)
 
-`Code.gs` sustituye por completo al script anterior. Ya no expone los datos personales: solo el personal con contraseña puede consultarlos.
+El servidor se publica solo desde GitHub. Cada cambio en `main` hace esto:
 
-## Despliegue (unos 10 minutos)
+1. Sube `Code.gs` al proyecto de Apps Script y publica una versión nueva con la misma URL.
+2. Comprueba que el servidor responde.
+3. Solo entonces publica la web. Si el servidor falla, la web anterior sigue funcionando.
 
-Hazlo fuera de un día de evento: entre el paso 6 y el 7 la web antigua deja de funcionar.
+En la primera petición tras el despliegue, el servidor se prepara solo:
+- Crea las hojas **Usuarios** y **Movimientos**.
+- Copia los usuarios y movimientos antiguos. Las hojas antiguas no se tocan; si alguna se llamaba igual, se renombra a «(antigua)».
+- Los QR que la gente ya tiene siguen valiendo mientras `allowLegacyQr` sea `true`.
 
-1. **Copia de seguridad.** Abre la hoja de Google Sheets que usa la app y haz *Archivo → Hacer una copia*.
-2. **Abre el editor.** En la hoja original: *Extensiones → Apps Script*.
-3. **Pega el código nuevo.** Borra todo el contenido de `Código.gs` y pega el de [`Code.gs`](Code.gs). Guarda.
-4. **Revisa la configuración.** Al principio del archivo, en `CONFIG`: nombre del evento, zonas, aforo (`capacity`), edad mínima y `appUrl`.
-5. **Ejecuta `setup`.** Elige la función `setup` en la barra superior y pulsa *Ejecutar*. Acepta los permisos.
-   - Crea las hojas **Usuarios** y **Movimientos**.
-   - Genera dos contraseñas y las muestra en el *Registro de ejecución*: una de **administración** (panel y escáner) y otra de **operador** (solo escáner).
-   - Para cambiarlas: *Configuración del proyecto → Propiedades del script*, en `ADMIN_PASSWORD` y `OPERATOR_PASSWORD`.
-6. **Migra los datos antiguos.** Ejecuta `migrarDatosAntiguos`.
-   - Copia los usuarios y los movimientos de las hojas antiguas sin tocarlas.
-   - Puedes ejecutarla varias veces: no duplica nada.
-   - Los QR que la gente ya tiene siguen funcionando mientras `allowLegacyQr` sea `true`.
-7. **Publica la nueva versión.** *Implementar → Gestionar implementaciones*, lápiz de la implementación actual, *Versión: Nueva versión*. Ejecutar como **yo** y acceso **cualquier usuario**. Pulsa *Implementar*. Así la URL no cambia.
-8. **Fusiona el Pull Request** en GitHub. En 1–2 minutos la web nueva está en GitHub Pages.
+## Configuración única (unos 10 minutos, desde un ordenador)
 
-Si el script no está dentro de la hoja (proyecto independiente), añade en *Propiedades del script* la propiedad `SPREADSHEET_ID` con el ID de la hoja.
+1. **Activa la API de Apps Script.** En [script.google.com/home/usersettings](https://script.google.com/home/usersettings), activa la «API de Google Apps Script».
+2. **Conecta tu cuenta de Google.** En una terminal con Node.js instalado:
+   ```
+   npx @google/clasp@2.4.2 login
+   ```
+   Se abre Google: entra con la cuenta dueña de «Controlpark DB» y pulsa *Permitir*. Esto crea el archivo `.clasprc.json` en tu carpeta de usuario (`C:\Users\TU_USUARIO\.clasprc.json` en Windows, `~/.clasprc.json` en Mac).
+3. **Guarda tres secretos en GitHub.** En el repositorio, ve a *Settings → Secrets and variables → Actions → New repository secret*:
+   - `CLASPRC_JSON`: el contenido completo de `.clasprc.json`. Es una credencial de tu cuenta: pégala solo ahí, nunca en un chat.
+   - `ADMIN_PASSWORD`: la contraseña del panel (mínimo 8 caracteres).
+   - `OPERATOR_PASSWORD`: la contraseña del escáner, distinta de la anterior.
+4. **Anota el ID del script.** Abre «Controlpark DB», ve a *Extensiones → Apps Script → Configuración del proyecto* (el engranaje) y copia el «ID de secuencia de comandos». Ese ID va en `apps-script/project.json`.
 
-Si creas una implementación nueva en vez de actualizar la existente, la URL cambia: cópiala en `js/config.js` (`API_URL`).
+Para cambiar una contraseña, edita su secreto en GitHub y vuelve a lanzar el despliegue: *Actions → Desplegar → Run workflow*.
 
-## Después del despliegue
+## Ajustes del evento
 
-- **Retira los QR antiguos.** Cuando todos tengan el pase nuevo, pon `allowLegacyQr: false`. Los QR antiguos solo llevan la matrícula y cualquiera podría falsificarlos.
-- **Cerrar todas las sesiones abiertas.** Borra la propiedad `SESSION_SECRET` (se regenera sola). Hazlo, por ejemplo, si cambias una contraseña porque se ha filtrado.
-- **Email con el pase.** Pon `sendEmailOnRegister: true` para que cada persona reciba un email con el enlace a su pase. Usa la cuota diaria de Gmail: unos 100 al día en cuentas gratuitas y 1.500 en Workspace.
-- **Aforo.** Con `capacity` en cada zona, el panel muestra la ocupación. Con `enforceCapacity: true`, además, el escáner deniega entradas cuando la zona está llena.
+Están en `CONFIG`, al principio de `Code.gs`:
+- nombre del evento;
+- zonas y su aforo (`capacity`);
+- edad mínima y campos obligatorios;
+- si se deniegan entradas con la zona llena (`enforceCapacity`);
+- si se aceptan los QR antiguos (`allowLegacyQr`).
+
+**Retira los QR antiguos.** Cuando todos tengan el pase nuevo, pon `allowLegacyQr: false`. Los QR antiguos solo llevan la matrícula y cualquiera podría falsificarlos.
+
+**Cerrar todas las sesiones abiertas.** Borra la propiedad del script `SESSION_SECRET`; se regenera sola.
 
 ## Acciones de la API
 

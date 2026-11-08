@@ -33,7 +33,7 @@ apps-script/          Backend (Code.gs) y guía de despliegue
 ## Despliegue
 
 - **Web:** GitHub Pages despliega automáticamente cada cambio en `main`. Todas las rutas son relativas, así que también funciona en una subcarpeta de controlpark.es.
-- **Backend:** sigue [`apps-script/README.md`](apps-script/README.md).
+- **Servidor:** se publica solo desde GitHub junto con la web. La configuración única está en [`apps-script/README.md`](apps-script/README.md).
 
 ## Cambiar de evento
 
