@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ControlPark · Aparcamiento</title>
+<meta name="description" content="Registro de vehículos y control de accesos al aparcamiento con pase QR.">
+<meta name="theme-color" content="#5271ff">
+<meta name="color-scheme" content="light dark">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icons/icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="ControlPark">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://script.google.com https://script.googleusercontent.com; media-src 'self' blob:; worker-src 'self'; base-uri 'self'; form-action 'none'; object-src 'none'">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="css/app.css">
+<link rel="modulepreload" href="js/app.js">
+<script type="module" src="js/app.js"></script>
+</head>
+<body>
+  <a class="skip" href="#view">Saltar al contenido</a>
+  <header class="topbar">
+    <a class="brand" href="#registro" aria-label="ControlPark, inicio">
+      <img src="icons/icon-192.png" alt="" width="34" height="34">
+      <span class="brand__name">ControlPark</span>
+      <span class="brand__event" id="event-name"></span>
+    </a>
+    <nav class="nav" id="nav" aria-label="Principal"></nav>
+  </header>
+
+  <div class="offline-bar" role="status">Sin conexión. Lo que hagas se guarda en este móvil.</div>
+
+  <main id="view" tabindex="-1">
+    <div class="boot"><span class="spinner" aria-hidden="true"></span> Cargando</div>
+  </main>
+
+  <div class="update" id="update" hidden role="status">
+    <span>Hay una versión nueva de la app.</span>
+    <button type="button" class="btn btn--sm btn--primary" id="update-btn">Actualizar</button>
+  </div>
+
+  <dialog id="dialog" class="dialog" aria-modal="true">
+    <button type="button" class="dialog__x" id="dialog-x" aria-label="Cerrar">&times;</button>
+    <div id="dialog-body"></div>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <noscript>Esta aplicación necesita JavaScript.</noscript>
+</body>
+</html>

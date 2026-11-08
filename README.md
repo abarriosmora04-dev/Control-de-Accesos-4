@@ -16,18 +16,20 @@ App web (PWA) para registrar vehículos, dar a cada persona un pase con QR y con
 ## Estructura
 
 ```
-index.html            Estructura de la página
-css/app.css           Estilos
-js/app.js             Arranque y navegación
-js/views/*.js         Pantallas: registro, pase, recuperar, acceso, escáner, panel
-js/api.js             Llamadas al backend y sesión
-js/offline.js         Copia local y cola de movimientos sin conexión
-js/camera.js          Lectura de QR (detector nativo o jsQR)
-js/pdf.js, js/qr.js   Pase en PDF y generación del QR
-js/config.js          URL del backend
-vendor/               Librerías servidas en local (funcionan sin conexión)
-sw.js, manifest.json  PWA
-apps-script/          Backend (Code.gs) y guía de despliegue
+web/                  La app (v3)
+  index.html          Estructura de la página
+  css/app.css         Estilos
+  js/app.js           Arranque y navegación
+  js/views/*.js       Pantallas: registro, pase, recuperar, acceso, escáner, panel
+  js/api.js           Llamadas al backend y sesión
+  js/offline.js       Copia local y cola de movimientos sin conexión
+  js/camera.js        Lectura de QR (detector nativo o jsQR)
+  js/pdf.js, js/qr.js Pase en PDF y generación del QR
+  js/config.js        URL del backend (la ajusta sola el despliegue)
+  vendor/             Librerías servidas en local (funcionan sin conexión)
+  sw.js, manifest.json PWA
+apps-script/          Servidor (Code.gs) y guía de configuración
+index.html, sw.js     Web anterior (v2): se publica solo si el servidor nuevo no está configurado
 ```
 
 ## Despliegue
