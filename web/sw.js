@@ -3,7 +3,7 @@
 // - Librerías, iconos y fuentes: primero la copia guardada.
 // - Las llamadas al servidor (Apps Script) nunca se guardan.
 // Rutas relativas: funciona igual en GitHub Pages que en controlpark.es.
-const VERSION = 'controlpark-v3.0.0';
+const VERSION = 'controlpark-v3.1.0';
 const CORE = [
   './', 'index.html', 'manifest.json', 'css/app.css',
   'js/app.js', 'js/api.js', 'js/config.js', 'js/util.js', 'js/ui.js', 'js/qr.js', 'js/pdf.js',

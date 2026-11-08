@@ -3,7 +3,7 @@
 // Si actualizas la implementación existente con «Nueva versión», la URL no cambia.
 export const API_URL = 'https://script.google.com/macros/s/AKfycbw_3iXG9z1tCFZ9sRFSC6rwrprU6FQg4hj5xnwjvGouqkA2ail47zf1jHu_AZwzXnaI/exec';
 
-export const APP_VERSION = '3.0.0';
+export const APP_VERSION = '3.1.0';
 
 // Configuración por defecto si el servidor no responde la primera vez (se sustituye por la del servidor).
 export const DEFAULT_CONFIG = {

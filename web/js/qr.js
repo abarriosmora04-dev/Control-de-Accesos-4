@@ -27,7 +27,7 @@ export function qrSvg(text, { margin = 2, label = 'Código QR del pase' } = {}) 
 /** Interpreta un QR leído: pase nuevo (token) o pase antiguo (JSON con matrícula). */
 export function parseQr(raw) {
   raw = String(raw || '').trim();
-  const m = /^CP2:([a-f0-9]{32})$/i.exec(raw);
+  const m = /^CP2[^A-Za-z0-9]{0,2}([a-f0-9]{32})$/i.exec(raw); // lectores con teclado español cambian «:» por «Ñ»
   if (m) return { token: m[1].toLowerCase() };
   try {
     const o = JSON.parse(raw);

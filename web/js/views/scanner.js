@@ -65,7 +65,7 @@ export async function mount(root, { config, go }) {
     $$('[data-mode]', root).forEach(b => b.setAttribute('aria-checked', String(b.dataset.mode === prefs.mode)));
     const z = config.zones.find(x => x.id === prefs.zona);
     $('#vp-label', root).textContent = z ? `${prefs.mode === 'entry' ? 'Entrada' : 'Salida'} en ${z.name}` : '';
-    $('#idle-text', root).textContent = z ? 'Activa la cámara y apunta al QR del pase.' : 'Elige primero la zona de este control.';
+    $('#idle-text', root).textContent = z ? 'Activa la cámara o usa un lector conectado.' : 'Elige primero la zona de este control.';
     $('#start', root).disabled = !z;
   };
   root.addEventListener('click', e => {
@@ -116,6 +116,30 @@ export async function mount(root, { config, go }) {
     else if (wantCamera && !camera) startCamera();
   };
   document.addEventListener('visibilitychange', onVisibility);
+
+  // ── Lector físico (pistola o PDA en modo teclado) ──
+  let wedge = '', wedgeLast = 0, wedgeSeen = false;
+  const onKey = e => {
+    if (e.target.closest?.('input, textarea, select, dialog')) return;
+    const now = Date.now();
+    if (now - wedgeLast > 120) wedge = '';
+    wedgeLast = now;
+    if (e.key === 'Enter' || e.key === 'Tab') {
+      const value = wedge.trim();
+      wedge = '';
+      if (value.length >= 8) {
+        e.preventDefault();
+        if (!wedgeSeen) { wedgeSeen = true; refreshStatus(); }
+        if (!verdict.hidden) hideVerdict();
+        unlockAudio();
+        lastValueAt = 0;
+        onCode(value);
+      }
+      return;
+    }
+    if (e.key.length === 1) wedge += e.key;
+  };
+  document.addEventListener('keydown', onKey);
 
   // ── Lectura ──
   function onCode(value) {
@@ -246,6 +270,7 @@ export async function mount(root, { config, go }) {
       <span class="pill ${online ? 'pill--ok' : 'pill--warn'}"><span class="dot" aria-hidden="true"></span>${online ? 'En línea' : 'Sin conexión'}</span>
       ${pending ? html`<span class="pill pill--warn">${pending} sin enviar</span>` : ''}
       ${inside !== null ? html`<span class="pill">${inside} dentro de esta zona</span>` : ''}
+      ${wedgeSeen ? html`<span class="pill pill--ok">Lector conectado</span>` : ''}
       <span class="scanner__snap">${snap ? `Pases descargados ${ago(snap.at)}` : 'Sin copia local de pases'}</span>`);
   }
 
@@ -280,6 +305,7 @@ export async function mount(root, { config, go }) {
     clearInterval(timer);
     clearInterval(statusTimer);
     document.removeEventListener('visibilitychange', onVisibility);
+    document.removeEventListener('keydown', onKey);
     window.removeEventListener('cp:queue', onQueue);
     window.removeEventListener('online', onOnline);
     window.removeEventListener('offline', onQueue);
